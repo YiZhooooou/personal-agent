@@ -52,3 +52,6 @@ Reviewed official app-server and SIWC documentation. Added proposed ADR 0001, di
 Recorded the owner-reported Plus subscription in the integration ADR and handoff. No inference, account changes, application code changes or build performed.
 
 Diagnostic fix validation: four mocked wrapper cases passed (null/zero exit with complete success; nonzero exit; missing report). No native process launched by regression checks.
+
+## 2026-10-02 — Git checkpoint
+Initialized local main and committed current source/documentation. Binary/dependency/data directories excluded. Secret scan matched the intentionally fake RSA header in test_tools.py redaction fixtures; reviewed as synthetic test data. Historical changes remain documented, not fabricated as past commits. GitHub push verification is recorded separately after upload.

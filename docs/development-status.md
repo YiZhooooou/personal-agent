@@ -1,3 +1,9 @@
+# Upload checkpoint — 2026-10-02
+
+Source checkpoint: preview.2; seven tests and build passed. Owner confirmed native UI and login. Actual model inference and UI retry regression remain pending. GitHub destination: private YiZhooooou/personal-agent.
+
+Next agreed work: fixed installation directory, patches for small updates, latest plus one rollback binary, history in Git/CHANGELOG/DEVLOG. Updater and cleanup are not implemented. Do not delete old files without review. Resume from this handoff after usage reset.
+
 # Current checkpoint: 0.4.0-preview.2
 
 Owner confirmed live login/connection works. Fixed stale sign-in error after success and ignored superseded login notifications. Existing seven tests passed; TypeScript/bundle and Windows packaging passed. Normal app data path preserved. Interactive retry and real inference remain unverified. Earlier status sections are historical.

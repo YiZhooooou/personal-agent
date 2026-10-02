@@ -15,3 +15,6 @@ Status: first incremental implementation approved; P1–P3 engineering preview i
 Manual screenshot review and the floating launcher belong to the UI/execution stages; their outbound policy is mandatory before enabling them. AM rebuild execution requires a separately approved environment-specific plan. Voice input/output is deferred, with extensibility considered now.
 
 At every implementation checkpoint: validate, build when appropriate, document and preserve a runnable baseline. Do not begin a large unfinished change just to use remaining quota.
+
+## Delivery follow-up agreed 2026-10-02
+Fixed install folder, patches for small changes, latest plus one rollback binary, history in Git. Pending implementation; existing archives have not been deleted.
