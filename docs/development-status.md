@@ -1,3 +1,7 @@
+# GitHub handoff — 2026-10-02
+
+Private repository created: https://github.com/YiZhooooou/personal-agent. Current local main contains preview.2 source, README, changelog, roadmap and delivery follow-up. Standard Git push encountered TLS/connection problems in this runtime; uploading the committed trees through the authenticated GitHub CLI/API with final SHA verification. Earlier uncreated-repository notes below are historical. No dependencies, binaries, chat records or credentials included.
+
 # Upload checkpoint — 2026-10-02
 
 Source checkpoint: preview.2; seven tests and build passed. Owner confirmed native UI and login. Actual model inference and UI retry regression remain pending. GitHub destination: private YiZhooooou/personal-agent.

@@ -42,7 +42,7 @@ python -m PyInstaller --noconfirm --windowed --onedir --hidden-import pystray._w
 Distribute the entire `dist/Personal-Agent` directory, including `_internal`. Verify the packaged `--smoke-test` before release. The executable is unsigned. Keep the frozen Tcl bootstrap intact. No new binaries were produced for the preparation milestone.
 
 ## Development
-Read [AGENTS.md](AGENTS.md) and [architecture](docs/architecture.md). Work in independently testable increments and update the devlog/handoff at each stop. Planned GitHub destination: a new private `personal-agent` repo in the owner's account; it has not been created. Do not include credentials, real user records, virtual environments or generated binaries in source commits. Binary distribution belongs in reviewed Releases.
+Read [AGENTS.md](AGENTS.md) and [architecture](docs/architecture.md). Work in independently testable increments and update the devlog/handoff at each stop. GitHub repository: [YiZhooooou/personal-agent](https://github.com/YiZhooooou/personal-agent), private. Development history starts with the current source checkpoint; older releases are documented in CHANGELOG.md. Do not include credentials, real user records, virtual environments or generated binaries in source commits. Binary distribution belongs in reviewed Releases.
 
 ## Known issues
 The HTTP error display currently omits detailed API error codes; a 429 alone cannot distinguish billing from throttling. Current desktop UI is Tk-based; concept images for the next UI are not screenshots of implemented features. Actual AM rebuild requires environment discovery and a separately approved retention/backup/recovery plan.
