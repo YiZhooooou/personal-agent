@@ -1,0 +1,18 @@
+Personal Agent 0.4.0-preview.2 - Windows test package
+
+1. Extract the whole ZIP. Do not run directly inside the ZIP viewer.
+2. Double-click CHECK-STARTUP.cmd. It uses temporary test data, does not sign in,
+   and does not send a model request or change Windows security settings.
+3. PASS means the packaged UI smoke check completed. Open Personal Agent Preview.exe.
+4. FAIL means startup is still unresolved. Read startup-check-.../status.txt and
+   stderr.log. Close an error dialog with OK; do not keep retrying.
+5. If PowerShell execution policy blocks the check, do not change the policy.
+   Open Personal Agent Preview.exe directly and report whether a window appears.
+
+The automated check captures ONLY the test app window in light/dark themes,
+not your desktop or other applications. Results stay in the extracted folder.
+There is no API charge for this startup check. Real online chat is not tested.
+
+This is an unsigned engineering preview, not a verified stable release.
+Keep v0.3 for existing records. Do not copy or sync app data/credentials.
+See READ-ME-FIRST.md for current features and limitations.

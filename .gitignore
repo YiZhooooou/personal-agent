@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.venv/
+node_modules/
+windows/
+dist/
+dist-test/
+release/
+artifacts/
+*.log
+.env*
+!.env.example
+*.db
+*.sqlite3*
+*.dpapi
+auth.json
