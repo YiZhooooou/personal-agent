@@ -55,3 +55,6 @@ Diagnostic fix validation: four mocked wrapper cases passed (null/zero exit with
 
 ## 2026-10-02 — Git checkpoint
 Initialized local main and committed current source/documentation. Binary/dependency/data directories excluded. Secret scan matched the intentionally fake RSA header in test_tools.py redaction fixtures; reviewed as synthetic test data. Historical changes remain documented, not fabricated as past commits. GitHub push verification is recorded separately after upload.
+
+## 2026-10-02 — Preserve UI design concepts
+Added the original light/dark PNG design boards to docs/design, with a README entry point. Explicitly labeled them concept images, not editable Figma files or shipped-feature screenshots. Application code unchanged.
