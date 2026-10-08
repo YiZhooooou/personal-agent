@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — chat-switch diagnostic
+- Show a local bilingual error panel for React rendering exceptions instead of an empty window.
+- Add repeated recent-chat switching and error-boundary regression coverage.
+- Reported white-screen root cause remains unconfirmed; this is a diagnostic patch, not a verified fix.
+
+
 ## 0.4.0-preview.2 — 2026-10-02
 - Clear stale sign-in errors when retrying and after successful login; clear renderer-local errors when the account becomes connected.
 - Ignore completion events from cancelled/superseded login attempts.

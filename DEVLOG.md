@@ -1,5 +1,12 @@
 # Development log
 
+## 2026-10-08 — Recent-chat blank screen investigation (unresolved)
+
+Owner reports blank screen on selecting recent chats. Source inspection and synthetic React tests did not reproduce it. Local state was inspected for schema/counts only (no conversation content output); two conversations have valid field types. Added a local React error boundary so exceptions show a bilingual diagnostic panel. This is mitigation/diagnosis, not a confirmed root-cause fix. Added repeated chat-switch/message/draft and error-boundary regressions. Seven core tests and two renderer tests passed; TypeScript/bundle passed. Sandbox TEMP initially denied atomic rename; core tests passed using workspace test scratch. Native runtime not relaunched.
+
+Prepared a small app.asar-only diagnostic patch for the existing install, with manual one-backup rollback instructions. No full Windows distribution, data migration, credential access or live model call. Next: obtain the diagnostic panel exception (or confirm native blank without panel) before making a targeted fix.
+
+
 ## 2026-10-02 — preview.2 sign-in error cleanup
 
 Owner confirmed connection/login works, but a failed first attempt left its error visible after a successful retry. Cleared runtime errors on retry/success and renderer-local errors on account transition; ignore superseded login completions using the protocol loginId. Preserve the same app data directory and credentials. Seven existing tests passed; native login retry flow not replayed automatically. Model inference remains unverified. New Windows/source checkpoint: 0.4.0-preview.2.

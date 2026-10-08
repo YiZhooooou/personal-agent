@@ -2,6 +2,7 @@ import React,{useEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {MessageSquare,Brain,CheckSquare,Blocks,Settings,Plus,ArrowUp,Square,Sun,Moon,ChevronRight,PanelLeft,Folder,FileText,Terminal,Monitor,ShieldCheck,Link2,RefreshCw,Trash2,Sparkles,ArrowRight,Globe,Lock,ChevronDown,Check,AlertCircle} from 'lucide-react';
 import type {Snapshot,Result,Space} from './shared';
+import {RenderBoundary} from './error-boundary';
 import './style.css';
 function App(){
  const [data,setData]=useState<Snapshot|null>(null),[page,setPage]=useState('chat'),[draft,setDraft]=useState(''),[pending,setPending]=useState(false),[review,setReview]=useState(false),[localError,setLocalError]=useState('');
@@ -52,4 +53,4 @@ function App(){
  </div>;
 }
 const spacesList:Space[]=['personal','lab','work'];
-createRoot(document.getElementById('root')!).render(<App/>);
+createRoot(document.getElementById('root')!).render(<RenderBoundary><App/></RenderBoundary>);

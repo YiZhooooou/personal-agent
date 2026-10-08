@@ -1,3 +1,7 @@
+# Active investigation — 2026-10-08
+
+Recent-chat selection reportedly blanks the window. NOT reproduced or confirmed fixed. Synthetic repeated switching with valid frozen IPC snapshots passes. Added RenderBoundary to display errors locally and built a small app.asar-only diagnostic patch (outputs/Personal-Agent-Chat-Diagnostic outside repo). Await the displayed exception; if no panel appears, investigate native renderer failure. No real message content read for testing. Nine tests and build passed separately; runner now includes both groups. No full installer built.
+
 # GitHub handoff — 2026-10-02
 
 Private repository created: https://github.com/YiZhooooou/personal-agent. Current local main contains preview.2 source, README, changelog, roadmap and delivery follow-up. Standard Git push encountered TLS/connection problems in this runtime; uploading the committed trees through the authenticated GitHub CLI/API with final SHA verification. Earlier uncreated-repository notes below are historical. No dependencies, binaries, chat records or credentials included.
