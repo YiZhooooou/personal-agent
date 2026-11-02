@@ -115,3 +115,9 @@ test('project editor saves handoff, shows history and restores with expected rev
   await act(async()=>button('恢复为新版本 / Restore as new revision').props.onClick());assert.equal(restored,true);assert.equal(ui.root.findByProps({'aria-label':'Project handoff'}).props.value,'original');
  }finally{if(ui)await act(async()=>ui.unmount());}
 });
+
+test('daily queue panel refreshes supervisor state and preserves retry action scope',async()=>{
+ let retried=false;const project={projectId:'p',name:'P',revision:1,handoff:'',source:'user'};
+ globalThis.window={agent:{tasksList:async()=>({ok:true,value:[]}),project:async r=>{const value=r.operation==='list'?[{id:'p',name:'P'}]:r.operation==='get'?project:r.operation==='scheduler-status'?{state:'running',running:true,timeZone:'America/New_York',lastCheck:'test'}:r.operation==='schedule-runs'?[{id:'attempt',schedule_id:'s',day:'2026-11-02',at:'09:00',outcome:'failed',message:'synthetic issue'}]:true;if(r.operation==='schedule-retry'){assert.equal(r.scheduleId,'s');retried=true;}return {ok:true,value};}}};
+ let ui;try{await act(async()=>{ui=create(React.createElement(TasksPage,{language:'en',space:'personal'}));});await act(async()=>ui.root.findByProps({'aria-label':'Project'}).props.onChange({target:{value:'p'}}));const panel=ui.root.findAllByType('details').find(d=>d.findAllByType('summary').some(s=>s.children.includes('每日入队 / Daily queue')));await act(async()=>panel.props.onToggle({currentTarget:{open:true}}));assert.ok(ui.root.findAllByType('p').some(p=>p.children.includes('synthetic issue')));await act(async()=>ui.root.findAllByType('button').find(b=>b.children.includes('重试今日入队 / Retry today')).props.onClick());assert.equal(retried,true);}finally{if(ui)await act(async()=>ui.unmount());}
+});

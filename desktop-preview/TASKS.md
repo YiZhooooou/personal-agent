@@ -43,3 +43,11 @@ Project settings can create daily device-local HH:mm schedules. Checks happen on
 ## Reviewed file changes
 
 A completed project task may return only JSON with name and content. The file must already exist at the registered folder top level, pass text preview validation and fit 12 KB. Review before/after, then apply through native confirmation. Raw backups live under change-proposals in local application data. Only JavaScript syntax is checked (not functional correctness). Undo refuses changed files. File replacement is staged in the same directory, with a persisted operation journal. Apply/undo reconciles interrupted operations when the current file matches the before/after snapshot; unknown conflicts require manual inspection. Preserve backups. This is not a power-loss durability or hostile-filesystem sandbox guarantee. Use a temporary project for initial acceptance.
+
+## Detached schedule supervisor
+
+Project Daily queue controls can explicitly start/stop a separate queue-only process. It continues after the submitting process exits, checks every five seconds and never invokes Codex. Status uses a heartbeat; stop is cooperative, normally within five seconds after the current check. Stopping the supervisor does not disable plans or open-window checks. Disable individual plans to prevent their future enqueueing. This is not a Windows service: no reboot/login auto-start or crash auto-restart.
+
+## Queue observability and retries
+
+Daily queue panel shows local timezone, nominal next check, supervisor state and attempt history. History keeps failed, blocked and queued attempts, with linked task status. Previous queued/running work blocks the next scheduled occurrence. Missed days are counted, not replayed. Retry today only rechecks failed/blocked enqueue attempts; it does not automatically retry failed model tasks. It preserves history and never auto-executes models. Stop is cooperative; an in-flight check may finish.

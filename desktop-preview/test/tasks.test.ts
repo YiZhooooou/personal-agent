@@ -145,7 +145,7 @@ test('project-scoped queue never claims another project task',()=>{
 test('daily schedules enqueue once per device date and preserve project context',()=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'schedule-'));let s=new TaskStore(root);const p=s.createProject('Daily');const before=new Date(2026,10,3,9,0),due=new Date(2026,10,3,10,1);
  s.addSchedule(p.projectId,'daily report','10:00',before);assert.deepEqual(s.tickSchedules(before),[]);assert.equal(s.tickSchedules(due).length,1);s.close();s=new TaskStore(root);
- try{assert.deepEqual(s.tickSchedules(due),[]);assert.equal(s.list()[0].project_id,p.projectId);assert.equal(s.tickSchedules(new Date(2026,10,5,11,0)).length,1);assert.equal(s.list().length,2);const schedule=s.schedules(p.projectId)[0];s.enableSchedule(String(schedule.id),false);assert.deepEqual(s.tickSchedules(new Date(2026,10,6,11,0)),[]);assert.throws(()=>s.addSchedule(p.projectId,'x','25:00'));}finally{s.close();}
+ try{assert.deepEqual(s.tickSchedules(due),[]);assert.equal(s.list()[0].project_id,p.projectId);const previous=s.claim()!;s.finish(String(previous.id),'succeeded','done');assert.equal(s.tickSchedules(new Date(2026,10,5,11,0)).length,1);assert.equal(s.list().length,2);const schedule=s.schedules(p.projectId)[0];s.enableSchedule(String(schedule.id),false);assert.deepEqual(s.tickSchedules(new Date(2026,10,6,11,0)),[]);assert.throws(()=>s.addSchedule(p.projectId,'x','25:00'));}finally{s.close();}
 });
 
 test('workspace registration lists local entries without leaking paths into model context',()=>{
@@ -171,4 +171,31 @@ test('interrupted replacement is reconciled and failed syntax remains reversible
  try{const project=s.createProject('Recovery');s.setWorkspace(project.projectId,folder);const task=s.submit('proposal','recover','text',project.projectId);s.claim();s.finish(String(task.id),'succeeded',JSON.stringify({name:'app.js',content:'const = broken;'}));const p=previewChange(s,String(task.id));const applied=applyChange(s,p.id);assert.equal(applied.check.status,'failed');
  const journal=path.join(s.root,'change-proposals',p.id+'.json');const interrupted=JSON.parse(fs.readFileSync(journal,'utf8'));interrupted.state='applying';interrupted.applied=false;interrupted.used=false;fs.writeFileSync(journal,JSON.stringify(interrupted));const restored=applyChange(s,p.id,true);assert.equal(restored.state,'reverted');assert.equal(fs.readFileSync(path.join(folder,'app.js'),'utf8'),'const ok = 1;');assert.ok(restored.events.some((e:any)=>e.operation==='recovered-applied'));assert.equal(restored.check.status,'passed');
  }finally{s.close();}
+});
+
+import {watchSchedules,stopScheduler,schedulerStatus} from '../src/task-scheduler';
+test('background scheduler has exclusive ownership, enqueues without inference and stops explicitly',{timeout:10000},async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'scheduler-watch-'));const s=new TaskStore(root);const p=s.createProject('Daily');s.addSchedule(p.projectId,'synthetic daily','00:00',new Date(2000,0,1,0,0));
+ let ready!:()=>void;const started=new Promise<void>(resolve=>{ready=resolve;});const watcher=watchSchedules(root,ready,15);await started;
+ try{assert.equal(schedulerStatus(root).running,true);await watchSchedules(root,()=>{},15);await new Promise(r=>setTimeout(r,40));assert.equal(s.list().length,1);assert.equal(s.list()[0].status,'queued');}finally{stopScheduler(root);await watcher;s.close();}assert.equal(schedulerStatus(root).running,false);
+});
+
+test('schedule log explains overlap, missed days and isolates one project failure',()=>{
+ const s=new TaskStore(fs.mkdtempSync(path.join(os.tmpdir(),'schedule-log-')));try{
+ const a=s.createProject('A'),b=s.createProject('B');s.addSchedule(a.projectId,'A','00:00',new Date(2000,0,1));s.addSchedule(b.projectId,'B','00:00',new Date(2000,0,1));const original=s.submit.bind(s);s.submit=(prompt,key,kind,project)=>{if(project===a.projectId)throw new Error('synthetic memory unavailable');return original(prompt,key,kind,project);};
+ assert.equal(s.tickSchedules(new Date(2026,10,2,12)).length,1);assert.equal(s.scheduleRuns(a.projectId)[0].outcome,'failed');assert.equal(s.scheduleRuns(b.projectId)[0].outcome,'queued');s.submit=original;
+ s.tickSchedules(new Date(2026,10,4,12));const log=s.scheduleRuns(b.projectId)[0];assert.equal(log.outcome,'blocked');assert.match(String(log.message),/1 missed/);assert.equal(s.list().filter(t=>t.project_id===b.projectId).length,1);
+ assert.deepEqual(s.tickSchedules(new Date(2026,10,1,12)),[]);
+ }finally{s.close();}
+});
+
+test('explicit retry preserves failed attempt history and never duplicates a successful enqueue',()=>{
+ const s=new TaskStore(fs.mkdtempSync(path.join(os.tmpdir(),'schedule-retry-')));try{const p=s.createProject('Retry');const [plan]=s.addSchedule(p.projectId,'report','00:00',new Date(2000,0,1));const original=s.submit.bind(s);s.submit=()=>{throw new Error('synthetic startup problem');};const now=new Date(2026,10,2,12);s.tickSchedules(now);assert.equal(s.scheduleRuns(p.projectId).length,1);s.submit=original;s.retrySchedule(String(plan.id),now);assert.equal(s.tickSchedules(new Date(2026,10,2,12,1)).length,1);assert.equal(s.scheduleRuns(p.projectId).length,2);assert.equal(s.scheduleRuns(p.projectId)[1].outcome,'failed');assert.throws(()=>s.retrySchedule(String(plan.id),now));assert.equal(s.list().length,1);}finally{s.close();}
+});
+
+test('schedule attempt history is not duplicated by database reopen',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'schedule-history-'));let s=new TaskStore(root);const p=s.createProject('History');s.addSchedule(p.projectId,'report','00:00',new Date(2000,0,1));s.tickSchedules(new Date(2026,10,2,12));s.close();s=new TaskStore(root);try{assert.equal(s.scheduleRuns(p.projectId).length,1);}finally{s.close();}
+});
+test('scheduler distinguishes stale heartbeat and corrupted status from stopped',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'scheduler-status-'));const file=path.join(root,'scheduler-control.json');fs.writeFileSync(file,JSON.stringify({enabled:true,heartbeat:Date.now()-60000}));assert.equal(schedulerStatus(root).state,'interrupted');fs.writeFileSync(file,'bad');assert.equal(schedulerStatus(root).state,'interrupted');
 });

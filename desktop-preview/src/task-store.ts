@@ -13,7 +13,7 @@ export class TaskStore {
   this.db.exec('BEGIN IMMEDIATE');
   try{
    const version=Number(this.db.prepare('PRAGMA user_version').get()!.user_version);
-   if(version>6)throw new Error('Task database is newer than this application.');
+   if(version>8)throw new Error('Task database is newer than this application.');
    this.db.exec(`
    CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY, request_key TEXT UNIQUE NOT NULL, prompt TEXT NOT NULL,
    status TEXT NOT NULL, result TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT '', created TEXT NOT NULL, updated TEXT NOT NULL,
@@ -22,7 +22,7 @@ export class TaskStore {
    if(!this.db.prepare('PRAGMA table_info(tasks)').all().some(c=>c.name==='kind'))this.db.exec("ALTER TABLE tasks ADD COLUMN kind TEXT NOT NULL DEFAULT 'text'");
    this.db.exec("CREATE TABLE IF NOT EXISTS task_steps(task_id TEXT NOT NULL,position INTEGER NOT NULL,title TEXT NOT NULL,prompt TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'queued',result TEXT NOT NULL DEFAULT '',error TEXT NOT NULL DEFAULT '',PRIMARY KEY(task_id,position)); CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY,name TEXT NOT NULL,handoff TEXT NOT NULL,revision INTEGER NOT NULL DEFAULT 1);");
    if(!this.db.prepare('PRAGMA table_info(tasks)').all().some(c=>c.name==='context_json'))this.db.exec("ALTER TABLE tasks ADD COLUMN context_json TEXT NOT NULL DEFAULT '{}'");
-   this.db.exec("CREATE TABLE IF NOT EXISTS project_history(project_id TEXT NOT NULL,revision INTEGER NOT NULL,handoff TEXT NOT NULL,source TEXT NOT NULL,created TEXT NOT NULL,PRIMARY KEY(project_id,revision)); INSERT OR IGNORE INTO project_history SELECT id,revision,handoff,'Existing project snapshot',datetime('now') FROM projects; CREATE TABLE IF NOT EXISTS schedules(id TEXT PRIMARY KEY,project_id TEXT NOT NULL,prompt TEXT NOT NULL,at TEXT NOT NULL,enabled INTEGER NOT NULL,last_day TEXT NOT NULL); CREATE TABLE IF NOT EXISTS project_workspaces(project_id TEXT PRIMARY KEY,root TEXT NOT NULL); PRAGMA user_version=6; COMMIT");
+   this.db.exec("CREATE TABLE IF NOT EXISTS project_history(project_id TEXT NOT NULL,revision INTEGER NOT NULL,handoff TEXT NOT NULL,source TEXT NOT NULL,created TEXT NOT NULL,PRIMARY KEY(project_id,revision)); INSERT OR IGNORE INTO project_history SELECT id,revision,handoff,'Existing project snapshot',datetime('now') FROM projects; CREATE TABLE IF NOT EXISTS schedules(id TEXT PRIMARY KEY,project_id TEXT NOT NULL,prompt TEXT NOT NULL,at TEXT NOT NULL,enabled INTEGER NOT NULL,last_day TEXT NOT NULL); CREATE TABLE IF NOT EXISTS project_workspaces(project_id TEXT PRIMARY KEY,root TEXT NOT NULL); CREATE TABLE IF NOT EXISTS schedule_runs(schedule_id TEXT NOT NULL,day TEXT NOT NULL,outcome TEXT NOT NULL,task_id TEXT NOT NULL,message TEXT NOT NULL,created TEXT NOT NULL,PRIMARY KEY(schedule_id,day)); CREATE TABLE IF NOT EXISTS schedule_run_events(id TEXT PRIMARY KEY,schedule_id TEXT NOT NULL,day TEXT NOT NULL,outcome TEXT NOT NULL,task_id TEXT NOT NULL,message TEXT NOT NULL,created TEXT NOT NULL); INSERT OR IGNORE INTO schedule_run_events SELECT schedule_id||':'||day,schedule_id,day,outcome,task_id,message,created FROM schedule_runs WHERE NOT EXISTS (SELECT 1 FROM schedule_run_events e WHERE e.schedule_id=schedule_runs.schedule_id AND e.day=schedule_runs.day); PRAGMA user_version=8; COMMIT");
   }catch(e){this.db.exec('ROLLBACK');this.db.close();throw e;}
  }
  submit(prompt:string,key:string,kind='text',projectId=''){
@@ -78,7 +78,12 @@ export class TaskStore {
   const files=fs.readdirSync(root,{withFileTypes:true}).filter(e=>!e.isSymbolicLink()&&!e.name.startsWith('.')&&e.name!=='node_modules').slice(0,200).map(e=>({name:e.name,directory:e.isDirectory()}));
   return {root,files};
  }
- schedules(projectId:string){this.projectContext(projectId);return this.db.prepare('SELECT * FROM schedules WHERE project_id=? ORDER BY at,id').all(projectId);}
+ schedules(projectId:string):Array<Record<string,unknown>>{
+  this.projectContext(projectId);const now=new Date(),day=localDay(now),clock=localClock(now);return this.db.prepare('SELECT * FROM schedules WHERE project_id=? ORDER BY at,id').all(projectId).map(row=>{
+   let next='';if(row.enabled){const date=new Date(now);if(String(row.last_day)>=day||String(row.at)<=clock)date.setDate(date.getDate()+1);next=localDay(date)+' '+row.at;}
+   return {...row,next_check:next,time_zone:Intl.DateTimeFormat().resolvedOptions().timeZone};
+  });
+ }
  addSchedule(projectId:string,prompt:string,at:string,now=new Date()){
   this.projectContext(projectId);
   if(typeof prompt!=='string'||!prompt.trim()||prompt.length>16000||typeof at!=='string'||!/^([01]\d|2[0-3]):[0-5]\d$/.test(at))throw new Error('Invalid schedule');
@@ -89,16 +94,40 @@ export class TaskStore {
   if(typeof enabled!=='boolean')throw new Error('Invalid enabled state');
   const r=this.db.prepare('UPDATE schedules SET enabled=?,last_day=? WHERE id=?').run(enabled?1:0,localDay(new Date()),id);if(r.changes!==1)throw new Error('Schedule not found');
  }
+ scheduleRuns(projectId:string){this.projectContext(projectId);return this.db.prepare('SELECT r.*,s.prompt,s.at,t.status AS task_status FROM schedule_run_events r JOIN schedules s ON s.id=r.schedule_id LEFT JOIN tasks t ON t.id=r.task_id WHERE s.project_id=? ORDER BY r.created DESC LIMIT 100').all(projectId);}
+ retrySchedule(id:string,now=new Date()){
+  const day=localDay(now);const run=this.db.prepare('SELECT outcome FROM schedule_runs WHERE schedule_id=? AND day=?').get(id,day);
+  if(!run||!['failed','blocked'].includes(String(run.outcome)))throw new Error('Only a failed or blocked check from today can be retried');
+  const changed=this.db.prepare("UPDATE schedules SET last_day='' WHERE id=? AND enabled=1 AND last_day=?").run(id,day);
+  if(changed.changes!==1)throw new Error('Plan changed, disabled or already marked for retry');return {retryPending:true};
+ }
  tickSchedules(now=new Date()){
-  const day=localDay(now),clock=localClock(now);const created:string[]=[];
-  this.db.exec('BEGIN IMMEDIATE');try{
-   const due=this.db.prepare('SELECT * FROM schedules WHERE enabled=1 AND at<=? AND last_day<>?').all(clock,day);
-   for(const schedule of due){
-    const task=this.submit(String(schedule.prompt),'schedule:'+schedule.id+':'+day,'text',String(schedule.project_id));
-    this.db.prepare('UPDATE schedules SET last_day=? WHERE id=?').run(day,schedule.id);created.push(String(task.id));
+  if(!Number.isFinite(now.getTime()))throw new Error('Invalid scheduler time');
+  const day=localDay(now),clock=localClock(now),created:string[]=[];
+  const due=this.db.prepare('SELECT id FROM schedules WHERE enabled=1 AND at<=? AND last_day<? ORDER BY at,id').all(clock,day);
+  for(const candidate of due){
+   this.db.exec('BEGIN IMMEDIATE');try{
+    const schedule=this.db.prepare('SELECT * FROM schedules WHERE id=? AND enabled=1 AND last_day<?').get(candidate.id,day);
+    if(!schedule){this.db.exec('COMMIT');continue;}
+    const pending=this.db.prepare("SELECT id FROM tasks WHERE request_key LIKE ? AND status IN ('queued','running','cancelling') LIMIT 1").get('schedule:'+schedule.id+':%');
+    let taskId='',outcome='queued',message='';
+    if(pending){outcome='blocked';message='Previous scheduled task is still queued or running; no overlapping task created.';}
+    else{const task=this.submit(String(schedule.prompt),'schedule:'+schedule.id+':'+day,'text',String(schedule.project_id));taskId=String(task.id);}
+    if(schedule.last_day){const missed=Math.max(0,Math.round((Date.parse(day)-Date.parse(String(schedule.last_day)))/86400000)-1);if(missed)message+=(message?' ':'')+missed+' missed calendar day(s) were not replayed.';}
+    this.db.prepare('INSERT OR REPLACE INTO schedule_runs VALUES(?,?,?,?,?,?)').run(schedule.id,day,outcome,taskId,message,now.toISOString());
+    this.db.prepare('INSERT INTO schedule_run_events VALUES(?,?,?,?,?,?,?)').run(randomUUID(),schedule.id,day,outcome,taskId,message,now.toISOString());
+    this.db.prepare('UPDATE schedules SET last_day=? WHERE id=?').run(day,schedule.id);this.db.exec('COMMIT');if(outcome==='queued')created.push(taskId);
+   }catch(e){
+    this.db.exec('ROLLBACK');
+    // A broken memory runtime or project must not prevent other schedules from being checked.
+    this.db.exec('BEGIN IMMEDIATE');try{
+     this.db.prepare('INSERT OR REPLACE INTO schedule_runs VALUES(?,?,?,?,?,?)').run(candidate.id,day,'failed','',(e as Error).message.slice(0,1000),now.toISOString());
+     this.db.prepare('INSERT INTO schedule_run_events VALUES(?,?,?,?,?,?,?)').run(randomUUID(),candidate.id,day,'failed','',(e as Error).message.slice(0,1000),now.toISOString());
+     this.db.prepare('UPDATE schedules SET last_day=? WHERE id=?').run(day,candidate.id);this.db.exec('COMMIT');
+    }catch(logError){this.db.exec('ROLLBACK');throw logError;}
    }
-   this.db.exec('COMMIT');return created;
-  }catch(e){this.db.exec('ROLLBACK');throw e;}
+  }
+  return created;
  }
  adoptTask(id:string){
   const task=this.get(id);if(!task||task.status!=='succeeded')throw new Error('Only completed tasks can become a project handoff');

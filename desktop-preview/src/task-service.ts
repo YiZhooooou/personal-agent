@@ -12,8 +12,8 @@ export class TaskService {
    });child.stdin?.end(input);
   });
  }
- run(customCodex:string,projectId=''):Promise<boolean>{return new Promise((resolve,reject)=>{
-  const child=spawn('node.exe',[this.script,'run',this.root,customCodex,projectId],{cwd:path.dirname(this.script),windowsHide:true,detached:true,stdio:['ignore','ignore','pipe','ipc']});
+ run(customCodex:string,projectId='',command='run'):Promise<boolean>{return new Promise((resolve,reject)=>{
+  const child=spawn('node.exe',[this.script,command,this.root,customCodex,projectId],{cwd:path.dirname(this.script),windowsHide:true,detached:true,stdio:['ignore','ignore','pipe','ipc']});
   let diagnostics='',settled=false;
   const timer=setTimeout(()=>finish(new Error('Worker startup timed out')),35000);
   function finish(error?:Error){if(settled)return;settled=true;clearTimeout(timer);if(error){child.kill();reject(error);}else{child.stderr?.destroy();child.disconnect();child.unref();resolve(true);}}
