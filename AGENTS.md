@@ -1,7 +1,7 @@
 # Development instructions
 
 ## Scope and current gate
-The owner approved the proposed architecture and incremental delivery, and explicitly authorized implementation. Build the first Electron/React/TypeScript preview with managed Codex login, basic streaming chat, dual-mode UI, themes and languages. Keep later roadmap features visibly pending. Preserve v0.3 and its data. Current checkpoint is 0.4.0-preview.2 (sign-in error cleanup). GitHub destination is the owner's private YiZhooooou/personal-agent repository; do not claim publication before it succeeds.
+The owner authorized continued development of the Agent workbench on feature/task-backend, reusing Personal Agent where useful. The first release centers on persistent project context, explicit handoffs/memory, task orchestration and constrained reviewed execution. Current Master is sequential bounded text delegation (1–3 children), not a general parallel platform. Preserve v0.3 and its data. Do not increment package versions at each checkpoint. GitHub destination is YiZhooooou/personal-agent; push is authorized, publication/release is not. Collect native acceptance in batches. Keep UI density and operation feedback on the active backlog.
 
 ## Product constraints
 - Prefer supported ChatGPT/Codex plan authentication. Never fall back silently to a paid API. Confirm official integration support and account eligibility before committing to an architecture.

@@ -76,7 +76,7 @@ test('killed worker releases ownership and CLI recovers partial output without r
 
 import {executeMaster,parsePlan} from '../src/task-master';
 const validPlan=JSON.stringify({tasks:[{title:'Analysis',instructions:'Analyze the goal'},{title:'Review',instructions:'Review risks'}]});
-test('master validates exactly two bounded text subtasks',()=>{
+test('master validates one to three bounded text subtasks',()=>{
  assert.equal(parsePlan('```json\n'+validPlan+'\n```').length,2);
  for(const bad of ['not JSON','{}','{"tasks":[]}',JSON.stringify({tasks:[{title:'a',instructions:'x'},{title:'b',instructions:'x'.repeat(6001)}]})])assert.throws(()=>parsePlan(bad));
 });
@@ -198,4 +198,49 @@ test('schedule attempt history is not duplicated by database reopen',()=>{
 });
 test('scheduler distinguishes stale heartbeat and corrupted status from stopped',()=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'scheduler-status-'));const file=path.join(root,'scheduler-control.json');fs.writeFileSync(file,JSON.stringify({enabled:true,heartbeat:Date.now()-60000}));assert.equal(schedulerStatus(root).state,'interrupted');fs.writeFileSync(file,'bad');assert.equal(schedulerStatus(root).state,'interrupted');
+});
+
+test('reading saved tasks does not request a write lock on an initialized database',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'db-read-lock-'));const s=new TaskStore(root);const p=s.createProject('Concurrent');const task=s.submit('read while writer active','concurrent','text',p.projectId);s.db.exec('BEGIN IMMEDIATE');
+ try{const {stdout}=await promisify(execFile)(process.execPath,[path.resolve('dist-test/task-cli.cjs'),'show',root,String(task.id)],{windowsHide:true,timeout:3000,encoding:'utf8'});assert.equal(JSON.parse(stdout).id,task.id);}finally{s.db.exec('ROLLBACK');s.close();}
+});
+
+test('file tasks freeze source, hide local root from model and reject stale or redirected proposals',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'file-snapshot-')),folder=path.join(root,'repo');fs.mkdirSync(folder);fs.writeFileSync(path.join(folder,'app.js'),'const x=1;');fs.writeFileSync(path.join(folder,'other.js'),'const y=1;');const s=new TaskStore(path.join(root,'data'));
+ try{const p=s.createProject('Files');s.setWorkspace(p.projectId,folder);const task=s.submitFile(p.projectId,'app.js','change x','snapshot');const context=JSON.parse(String(task.context_json));assert.equal(context.fileInput.text,'const x=1;');assert.deepEqual(JSON.parse(attachProject('change x',context)).projectBackground.fileInput,{name:'app.js',text:'const x=1;'});fs.writeFileSync(path.join(folder,'app.js'),'const x=9;');assert.equal(s.submitFile(p.projectId,'app.js','change x','snapshot').id,task.id);s.claim();s.finish(String(task.id),'succeeded',JSON.stringify({name:'app.js',content:'const x=2;'}));assert.throws(()=>previewChange(s,String(task.id)),/changed since/);
+ fs.writeFileSync(path.join(folder,'app.js'),'const x=1;');assert.equal(previewChange(s,String(task.id)).name,'app.js');const other=s.submitFile(p.projectId,'app.js','another','redirect');s.claim();s.finish(String(other.id),'succeeded',JSON.stringify({name:'other.js',content:'const y=2;'}));assert.throws(()=>previewChange(s,String(other.id)),/changed since/);
+ }finally{s.close();}
+});
+
+import {applyChangeLocked} from '../src/project-change';
+test('project write lease rejects concurrent apply before any file is modified',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'write-lease-')),folder=path.join(root,'repo');fs.mkdirSync(folder);fs.writeFileSync(path.join(folder,'app.js'),'const x=1;');const s=new TaskStore(path.join(root,'data'));
+ try{const p=s.createProject('Lease');s.setWorkspace(p.projectId,folder);const task=s.submitFile(p.projectId,'app.js','x to 2','lease');s.claim();s.finish(String(task.id),'succeeded',JSON.stringify({name:'app.js',content:'const x=2;'}));const proposal=previewChange(s,String(task.id));const release=await acquireWorker(folder);try{await assert.rejects(applyChangeLocked(s,proposal.id),/ownership unavailable/);assert.equal(fs.readFileSync(path.join(folder,'app.js'),'utf8'),'const x=1;');}finally{release();}await applyChangeLocked(s,proposal.id);await applyChangeLocked(s,proposal.id,true);
+ }finally{s.close();}
+});
+
+import {adoptChange,adoptRollback} from '../src/project-change';
+test('execution handoff requires applied verified state and distinguishes syntax from functional checks',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'execution-handoff-')),folder=path.join(root,'repo');fs.mkdirSync(folder);fs.writeFileSync(path.join(folder,'app.js'),'const x=1;');const s=new TaskStore(path.join(root,'data'));
+ try{const p=s.createProject('Execution');s.setWorkspace(p.projectId,folder);const task=s.submitFile(p.projectId,'app.js','x to 2','execution');s.claim();s.finish(String(task.id),'succeeded',JSON.stringify({name:'app.js',content:'const x=2;'}));assert.throws(()=>s.adoptTask(String(task.id)),/applied proposal/);const proposal=previewChange(s,String(task.id));assert.throws(()=>adoptChange(s,proposal.id),/Apply/);await applyChangeLocked(s,proposal.id);const handoff=adoptChange(s,proposal.id);assert.match(handoff.handoff,/functional tests were not run/);assert.match(handoff.source,/Applied proposal/);assert.throws(()=>adoptChange(s,proposal.id),/changed/);await applyChangeLocked(s,proposal.id,true);assert.throws(()=>adoptChange(s,proposal.id),/Apply/);const rollback=adoptRollback(s,proposal.id);assert.match(rollback.handoff,/no longer applied/);assert.equal(rollback.revision,3);assert.throws(()=>adoptRollback(s,proposal.id),/changed/);
+ }finally{s.close();}
+});
+
+import {parseFileProposal} from '../src/file-proposal';
+test('model file proposals are validated before reporting proposal success',()=>{
+ assert.deepEqual(parseFileProposal('```json\n{"name":"app.js","content":"const x=2;"}\n```','app.js'),{name:'app.js',content:'const x=2;'});
+ for(const value of ['not JSON','null','{"name":"other.js","content":"x"}','{"name":"../app.js","content":"x"}',JSON.stringify({name:'app.js',content:'x'.repeat(12001)})])assert.throws(()=>parseFileProposal(value,'app.js'));
+});
+
+test('master chooses bounded child count and stores a separate final summary step',async()=>{
+ for(const count of [1,3]){const s=new TaskStore(fs.mkdtempSync(path.join(os.tmpdir(),'master-count-')));try{const task=s.submit('goal','count','master');s.claim();let calls=0;const result=await executeMaster(s,String(task.id),'goal',async()=>{calls++;return {status:'succeeded',result:calls===1?JSON.stringify({tasks:Array.from({length:count},(_,i)=>({title:'child '+i,instructions:'Analyze independently'}))}):'output',error:''};});s.finish(String(task.id),result.status,result.result,result.error);assert.equal(calls,count+2);assert.equal(s.steps(String(task.id)).length,count+2);assert.equal(s.steps(String(task.id)).at(-1)!.title,'Master · Summary');}finally{s.close();}}
+ assert.throws(()=>parsePlan(JSON.stringify({tasks:Array(4).fill({title:'x',instructions:'y'})})));
+});
+
+test('credential filenames and obvious credential contents are blocked before file snapshot creation',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'credential-file-')),folder=path.join(root,'repo');fs.mkdirSync(folder);fs.writeFileSync(path.join(folder,'auth.json'),'{}');fs.writeFileSync(path.join(folder,'config.json'),JSON.stringify({refresh_token:'synthetic-token'}));const s=new TaskStore(path.join(root,'data'));try{const p=s.createProject('Protected');s.setWorkspace(p.projectId,folder);assert.throws(()=>s.readWorkspaceFile(p.projectId,'auth.json'),/Credential/);assert.throws(()=>s.submitFile(p.projectId,'config.json','explain','blocked'),/credentials/);assert.equal(s.list().length,0);}finally{s.close();}
+});
+
+test('model proposals cannot introduce obvious credentials into registered files',()=>{
+ assert.throws(()=>parseFileProposal(JSON.stringify({name:'app.js',content:'const config = {refresh_token: "synthetic-token"};'}),'app.js'),/credentials/);
 });

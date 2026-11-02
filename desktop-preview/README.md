@@ -1,50 +1,45 @@
-# Personal Agent desktop preview
+# Agent workbench engineering preview
 
-Version: 0.4.0-preview.2. Engineering preview; native UI smoke passed in the owner desktop session. Live login/inference remain **unverified**. Keep v0.3 for existing records. This preview does not migrate or edit v0.3 data.
+Current development lives on `feature/task-backend`; the Python v0.3 application and its data remain separate. The package version is intentionally unchanged during these development checkpoints. No installer release has been published.
 
-## Windows package
+## What works now
 
-Extract the entire ZIP into a normal local folder, then open `Personal Agent Preview.exe`. Keep its adjacent files and `resources` directory together. This is a desktop program, not a hosted website. The executable is unsigned.
+- Personal projects, revisioned handoffs/history, explicit long-term memory and inspectable per-message/task input snapshots. Memory sources include exact event revisions. Disabling/deleting affects future retrieval, not old audit snapshots.
+- Managed isolated Codex sign-in, streaming chat and cancellation. Owner confirmed real login/inference, stop, background task persistence, project continuity and the earlier reviewed file Apply/reopen/Undo cycle.
+- Ordinary background tasks and optional sequential Master planning with 1–3 independent text children plus summary (3–5 calls total). Each step persists its result; cancellation stops subsequent steps. Ordinary tasks remain the default.
+- Daily project queue plans, persisted per-day attempts, explicit retry, and an optional detached queue supervisor. Due plans enqueue tasks; they never automatically call a model. No OS service, login startup or crash restart.
+- Explicit bounded single-file tasks: select an existing top-level UTF-8 file (12 KB maximum), state the goal, review generated content, confirm Apply, inspect syntax/audit, Undo. Original input is frozen at submission. Stale source, wrong target and concurrent workbench writes are rejected. No project commands or multi-file writes.
+- Explicit execution and rollback handoffs tied to actual file state. A model answer alone is not proof a change was applied or functionally tested.
+- Separate Projects page and compact selectors in Chat/Tasks; project panels separate Handoff, Files, Memory, Schedule and History. Memory search/paging and visible operation feedback reduce page density.
 
-The development environment blocked Electron before the renderer loaded: exit `0x80000003` in `install_dir_access.cc`. Inspection of [Electron's source](https://github.com/electron/electron/blob/v44.5.1/shell/browser/win/install_dir_access.cc) shows it checks restricted-token access to `icudtl.dat`; the AppContainer ACL explanation in its error is fixed text. Current inspected ACLs contain no AppContainer package SID, so an actual corrupted ACL is not established. Ordinary-user startup is needed to distinguish restricted execution from a package defect. A previous `--no-sandbox` diagnostic also failed; production keeps sandboxing enabled and no ACLs were changed.
+## Privacy and limits
 
-After extraction, `CHECK-STARTUP.cmd` runs a bounded native UI check with temporary data and no login/inference. It saves status, logs and images of the test app window only to `startup-check-*`. If PowerShell policy blocks it, leave that policy unchanged and open the executable normally. Packaging success is not startup success. Close any error dialog and report the status instead of repeatedly launching.
+Normal data is `%APPDATA%\PersonalAgentPreview`. The isolated `codex-home` contains Codex-managed authentication; never copy, commit or sync it. An installed compatible Codex executable and eligible account are still required. No API-key fallback or automatic credit purchase. Personal/Lab chat may send selected input to the online model. Work is local-only; project/background operations are Personal-only.
 
-## Implemented scope
+File preview/attachment requires explicit action. Known credential filenames and obvious credential values are rejected, but this is best-effort detection. Folder validation and cooperative leases are not an OS sandbox against another process changing files. Syntax checks do not execute project code and are not functional tests. Keep real repositories out of first acceptance.
 
-- React Chat and Workbench shell, Chinese/English, light/dark.
-- Local chats and drafts, isolated Personal/Lab/Work spaces.
-- Work is local notes only; main-process code blocks model submission.
-- Managed local Codex login, streaming/cancellation handlers and quota/error display. Live account testing remains pending.
-- No API-key authentication or automatic paid API fallback. Account access to `gpt-6-astra` remains unverified.
-- Memory, reminders, OneDrive, skills, floating launcher, VM execution and voice remain planned.
+## Build and test (Windows x64)
 
-Normal data: `%APPDATA%\PersonalAgentPreview`. The `codex-home` subdirectory holds the isolated Codex session; never sync or commit it. The app does not read the existing Codex login. Personal/Lab submissions go to the online service; Work notes stay local. No model request runs on launch.
-
-Once native startup works, use Settings → Connect Codex → Sign in with ChatGPT. An installed Codex executable is required; choose it manually if discovery fails. Protocol checks used `codex-cli 0.158.0-alpha.2.1`. Other versions and actual model eligibility are unverified. Check account billing/credit settings separately: the app does not purchase credits or implement an account-wide spending cap.
-
-## Development
-
-Prerequisites: Windows x64, Node.js 24 and npm. From this directory:
+Build machine: Node 24, Python 3.12 and PyInstaller. Use an isolated Python environment for the memory build. From this directory:
 
 ```powershell
 npm ci
 node node_modules/electron/install.js
 npm test
+npm run build:memory
 npm run build
-npm run check:codex
 npm start
 npm run package
 ```
 
-The explicit Electron install obtains the packaging runtime. For restricted environments set `electron_config_cache` to writable scratch before installing. Packaging uses this runtime, avoiding a second user-cache download. Directory output: `../../../work/desktop-preview-release/win-unpacked`.
+Packaging verifies the actual Electron distribution matches the pinned dependency, includes a separate Node task runtime and standalone Python memory service outside app.asar, and refuses missing bundled runtimes. `ELECTRON_DIST` and `BUILDER_CLI` may select an isolated reviewed build installation. Output defaults to `../../../work/desktop-preview-release/win-unpacked`. Ship the entire folder together. Build-time Node is copied, so its version and notices must be reviewed before public distribution.
 
-`src/main.ts` owns policy, IPC and process lifecycle; `preload.ts` exposes the bridge; `renderer.tsx` owns UI. `store.ts` isolates spaces and bounds outbound history; `codex.ts` handles JSON-RPC and rejects server tool requests. Shell/browser/plugin features are disabled for this text preview.
+The current unsigned engineering package is not a release candidate: clean-machine native startup, license/third-party notices, signing, updates and migration/recovery packaging remain release gates. Electron cannot start under this tool environment's restricted token (0x80000003); owner desktop acceptance is required. Never disable the sandbox or change system ACLs to bypass this check.
 
-## Validation
+## Current verification
 
-Seven tests passed: persistence/restart, Work isolation, bounded context, corrupt-file preservation, child environment filtering, fragmented protocol/tool denial and timeouts. TypeScript/bundling, isolated local Codex handshake/account read and Windows packaging passed. Tests used no user credentials or inference. Native UI smoke failed before startup. Visual, login, streaming/cancellation and clean-machine acceptance remain outstanding. No successful screenshots of this build exist yet.
+2026-11-02: 61 TS/React tests and 43 Python tests passed; TypeScript/bundle and standalone memory build passed. Synthetic live file proposal generation/Apply/syntax/Undo and detached scheduler lifecycle passed. Mock-browser UI inspection proves navigation/layout only, not the native bridge. Packaged backend verification removes developer Node/Python from PATH. Final native acceptance is collected separately.
 
-### Startup result correction (2026-10-02)
+Pinned Electron 44.10.1 / builder 26.18.0 and refreshed lockfile remove known high/critical npm audit findings at this checkpoint. Fifteen moderate findings remain; no forced major dependency upgrades were applied.
 
-The owner-run packaged smoke test passed all five checks and produced both screenshots. An empty PowerShell ExitCode caused the wrapper to print a false FAIL. The corrected wrapper accepts a complete fresh success report when that code is unavailable, while rejecting known nonzero exits. Earlier restricted-environment failures do not describe the ordinary desktop result. Live login/chat testing remains pending.
+See [task backend](TASKS.md), [development status](../docs/development-status.md) and [scope roadmap](../ROADMAP.md).

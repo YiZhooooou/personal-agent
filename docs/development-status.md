@@ -1,3 +1,29 @@
+## 2026-11-02 — Autonomous workbench checkpoint
+
+Completed first-class source-bound file tasks, execution/rollback handoffs, folder-scoped write ownership and bounded Master planning (1–3 children). Refactored navigation into Projects plus compact Chat/Task selectors, with separate management panels, search/paging and operation feedback. Exact memory source revisions now accompany retrieval; service-level serialization prevents concurrent stale memory edits. Obvious credential file/content checks apply before snapshots and proposal writes.
+
+Validation: 61 TS/React tests, 43 Python tests, TypeScript/bundle and standalone memory build passed. Real synthetic file-task Apply/syntax/Undo and detached scheduler lifecycle checks passed. Mock browser verifies layout only. Packaging carries standalone Node/Python outside ASAR and checks Electron version; refreshed Electron 44.10.1/builder 26.18.0 lockfile has no high/critical npm audit findings, 15 moderate remain. New native UI, execution/rollback handoff and clean-machine acceptance remain pending. Earlier owner file cycle/project continuity acceptance retained. No real user repository modified, no automatic inference added, no public release.
+
+Next: grouped owner acceptance; then improve diff readability/task navigation and add meaningful project-specific test adapters before expanding execution. General tool plugins, multi-file/parallel execution, OneDrive port and public installer/update mechanisms remain deferred.
+
+## 2026-11-02 — Execution receipts and bounded Master planning
+
+Added explicit execution and rollback handoffs, sourced from actual proposal state and syntax check, with project revision checks. Model success alone cannot promote a file task to completion handoff. File operations share canonical-folder ownership even when project IDs alias the same folder. Unified file proposal parser rejects wrong target, malformed or oversized model output; original output remains for diagnosis.
+
+Master now plans 1–3 independent text children, choosing the smallest useful count; summary has its own persisted step and a bounded aggregate input. Maximum five calls; simple tasks still default to the single-call mode. Added copy-to-draft to recover task instructions without automatically retrying model requests.
+
+Memory deletion now has a native confirmation identifying the record; global error dismissal actually clears the displayed runtime error. Scheduling prepares memory context before acquiring its write transaction to reduce contention. 58 TS tests/build passed at this checkpoint; final regression and packaging checks recorded later. Native UI and first-class file-task acceptance grouped for owner review.
+
+## 2026-11-02 — Project navigation and bounded file-task checkpoint
+
+Owner accepted project continuity, disabled-memory retrieval and restart persistence; file-change desktop cycle already accepted. Added first-class file task mode: goal + filename, original content/root snapshotted at submission, automatic output-format instruction, stale-source/wrong-target rejection, root excluded from model payload. CLI file apply/undo uses an exclusive per-project write lease, and native confirmation identifies file/folder/task.
+
+UI improvement pulled forward because page density blocked acceptance: dedicated Projects page, compact selectors in chat/tasks, separate Handoff/Files/Memory/Schedule/History panels. Memory list shown first, editor opened explicitly; reads auto-load on relevant panels. Added visible pending/success/error feedback and task composition preservation while navigating. Browser UI checks use synthetic mock data only, not a live Electron bridge.
+
+Validation: 55 TS tests passed; real synthetic first-class file proposal generation/apply/syntax check/restore passed. Build passed. New native navigation/file mode requires grouped acceptance. Master mode remains the two-child experiment at this checkpoint. No arbitrary project commands or multi-file editing.
+
+Owner acceptance: file proposal apply, reopen, audit reload and Undo workflow passed on native desktop. Existing chat project controls were disabled as designed, but lacked an explanation; added visible new-chat guidance.
+
 ## 2026-11-02 — Observable daily queue checkpoint
 
 Schema 8 records every enqueue attempt, latest per-day outcome, source task and failure/overlap/missed-day explanation. Each plan is isolated transactionally; one failure does not block other plans. Pending prior scheduled work blocks overlap. Explicit same-day retry is limited to failed/blocked checks and preserves earlier attempts. Clock rollback does not replay newer dates.
@@ -94,3 +120,7 @@ Reviewed single-file modification milestone: completed project tasks may return 
 File proposal checkpoint: same-directory staged replacement with fsync, atomic journal updates, applying/reverting reconciliation, persisted audit and reloadable proposals. Syntax failures remain visible and reversible. 42 TS tests passed, including interrupted replacement recovery; a real synthetic model proposal was applied, syntax checked and restored in a temp directory. No user workspace modified. This is local-process recovery, not an OS sandbox or a power-loss durability guarantee. Native confirmation/preview acceptance still pending.
 
 Detached daily queue supervisor: explicit Personal UI start/stop/status controls launch a separate Node process with exclusive named-pipe ownership and heartbeat. It queues schedules only, never starts model execution. Stop uses a separate marker so heartbeat writes cannot overwrite the stop request. 43 TS tests/build passed; detached-process check verified the submitting parent exited before a new due schedule was added and queued. Test supervisor stopped afterward. No Windows login startup or crash auto-restart; native close-window acceptance pending. Stopping background checks does not disable schedule definitions or checks in an open Personal UI.
+
+Owner screenshot exposed stale project revision after task adoption: history had v3 while editor held v2, disabling restore of v2. History now refreshes current project before computing restore controls and refuses to discard unsaved edits. Regression added; 49 tests/build passed.
+
+Database contention fix after owner screenshot: configure busy_timeout before operations, skip WAL/schema writes on already-current databases, and avoid recovery write transactions when no interrupted tasks exist. Regression holds a write transaction in one process and verifies another process reads saved data within 3 seconds. 50 TS tests/build passed. Task service strips SQLite warning boilerplate from actionable errors and gives a clear busy message. Owner desktop retest pending.

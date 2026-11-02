@@ -1,3 +1,7 @@
+## Unreleased — workbench checkpoint (2026-11-02)
+
+Projects and revisioned memory/context, daily queue observability, source-bound file tasks with reviewed Apply/Undo and execution receipts, bounded Master children, and focused project navigation. Runtime packaging and dependency refresh are engineering checks; no installer release. White-screen effect cleanup was fixed and owner real chat/cancel passed; older diagnostic entries below are historical.
+
 ## Unreleased — Master text workflow
 
 Experimental sequential planning, two child tasks and synthesis with saved step results and cancellation. Ordinary task close/reopen was confirmed. No installer release.

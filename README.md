@@ -2,7 +2,7 @@
 
 A Windows personal desktop assistant for conversations, local memory, tasks and optional IAM lab tools.
 
-**Stable baseline: v0.3. Current preview: 0.4.0-preview.2.** The separate [Electron preview](desktop-preview/README.md) adds managed Codex login and a bilingual Chat/Workbench shell. Native smoke passed in the owner desktop session and the owner confirmed login works. Preview.2 fixes stale sign-in errors after success. Build and seven tests passed; real model inference remains unverified. Sections below describe the preserved v0.3 baseline unless stated otherwise.
+**Stable baseline: v0.3. Active development: Agent workbench on `feature/task-backend`.** The separate [Electron workbench](desktop-preview/README.md) now provides project continuity, explicit memory, background tasks, bounded Master delegation, daily queues and reviewed single-file changes. Owner acceptance covers real login/chat, cancellation, background persistence, project context and the earlier Apply/reopen/Undo cycle. The latest navigation and execution-handoff changes await grouped native acceptance. This is an engineering preview, not a public installer release. Sections below describe preserved v0.3 behavior unless stated otherwise.
 
 [UI design concepts / 浅色与深色设计图](docs/design/README.md) · [中文使用说明](README.zh-CN.md) · [Requirements](docs/requirements.md) · [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md) · [Development log](DEVLOG.md) · [Handoff](docs/development-status.md)
 

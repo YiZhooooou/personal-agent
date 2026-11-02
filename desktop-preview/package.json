@@ -10,7 +10,8 @@
     "start": "electron .",
     "test": "node scripts/test.mjs",
     "check:codex": "node scripts/check-codex.mjs",
-    "package": "npm run build && electron-builder --win dir"
+    "package": "node scripts/package.mjs",
+    "stage:runtime": "node scripts/stage-task-runtime.mjs"
   },
   "dependencies": {
     "lucide-react": "0.468.0",
@@ -22,8 +23,8 @@
     "@types/react": "19.2.0",
     "@types/react-dom": "19.2.0",
     "@types/react-test-renderer": "^19.1.0",
-    "electron": "44.5.1",
-    "electron-builder": "26.0.12",
+    "electron": "44.10.1",
+    "electron-builder": "26.18.0",
     "esbuild": "0.25.12",
     "esbuild-wasm": "0.25.12",
     "react-test-renderer": "^19.2.0",
@@ -57,12 +58,34 @@
       "output": "../../../work/desktop-preview-release"
     },
     "files": [
-      "dist/**/*",
+      "dist/main.cjs",
+      "dist/preload.cjs",
+      "dist/renderer.js",
+      "dist/renderer.css",
+      "dist/index.html",
       "package.json"
     ],
     "win": {
       "target": "dir",
       "signAndEditExecutable": false
-    }
+    },
+    "extraResources": [
+      {
+        "from": "dist/tasks.cjs",
+        "to": "task-service/tasks.cjs"
+      },
+      {
+        "from": "dist/memory-service",
+        "to": "task-service/memory-service"
+      },
+      {
+        "from": "dist/service-runtime/node.exe",
+        "to": "task-service/node.exe"
+      },
+      {
+        "from": "dist/service-runtime/runtime-manifest.json",
+        "to": "task-service/runtime-manifest.json"
+      }
+    ]
   }
 }

@@ -1,3 +1,11 @@
+## Current scope (2026-11-02; historical checkpoints below)
+
+Use the Personal Tasks page with a project selected. Choose ordinary text (default), experimental Master (planner + 1–3 sequential text children + summary), or single-file proposal (goal + existing filename). Saving freezes current handoff, relevant memory and exact source revisions. File tasks also freeze original file content and local mapping; paths are stripped from model payload. Run project queue claims only the selected project. Daily plans enqueue, never run inference automatically.
+
+File tasks require review and native confirmation to Apply. JavaScript syntax checking does not execute code or prove behavior. After Apply, explicitly save execution handoff; Undo may then save a separate rollback handoff. A stale project revision or modified file blocks promotion. Proposal audit and backups persist across restart. Ordinary completed text results can still be saved as handoff explicitly. No automatic retry or arbitrary shell execution.
+
+Packaged service uses its included Node and Python runtimes; development uses Node 24. See README for build and public-release limits.
+
 # Local background text tasks
 
 Requires Windows and Node 24. Run `npm run build` and `npm test` from desktop-preview.

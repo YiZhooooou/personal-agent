@@ -1,9 +1,21 @@
 """Bounded JSON memory process. The launcher owns the data root; requests cannot change it."""
 import json
 import sys
+import sqlite3
+from contextlib import closing, contextmanager
 from pathlib import Path
 from memory import Brain, build_context, uid
-from core import identity
+from core import identity, redact
+
+@contextmanager
+def serialized(lock_file):
+    if lock_file.is_symlink():
+        raise ValueError('Linked service lock refused')
+    with closing(sqlite3.connect(lock_file,timeout=10)) as lock:
+        with lock:
+            lock.execute('BEGIN IMMEDIATE')
+            yield
+
 
 def handle(root, request):
     if not isinstance(request, dict) or set(request) - {'operation','project','title','text','entity','status','revision'}:
@@ -18,26 +30,37 @@ def handle(root, request):
     title = request.get('title','Project memory')
     if not isinstance(text,str) or len(text)>8000 or not isinstance(title,str) or not title.strip() or len(title)>120:
         raise ValueError('Invalid memory text')
+    if operation in ('save','update') and (redact(text)!=text or redact(title)!=title):
+        raise ValueError('Credentials must not be stored in project memory')
     folder = root / project
     if folder.is_symlink():
         raise ValueError('Linked project folder refused')
     folder.mkdir(parents=True,exist_ok=True)
     if folder.resolve().parent != root.resolve():
         raise ValueError('Project folder outside data root')
-    device_file = root / 'device-id.txt'
-    if not device_file.exists():
-        try:
-            with device_file.open('x',encoding='utf-8') as f:
-                f.write(identity())
-        except FileExistsError:
-            pass
-    device = device_file.read_text(encoding='utf-8').strip()
-    if not uid(device):
-        raise ValueError('Invalid local device identity')
+    with serialized(root/'identity-lock.sqlite3'):
+        device_file = root / 'device-id.txt'
+        if device_file.is_symlink():
+            raise ValueError('Linked device identity refused')
+        if not device_file.exists():
+            try:
+                with device_file.open('x',encoding='utf-8') as f:
+                    f.write(identity())
+            except FileExistsError:
+                pass
+        device = device_file.read_text(encoding='utf-8').strip()
+        if not uid(device):
+            raise ValueError('Invalid local device identity')
     db = folder / 'memory.sqlite3'
     if db.is_symlink():
         raise ValueError('Linked database refused')
-    brain = Brain(db,device)
+    # Serialize revision checks and writes across independent service processes.
+    with serialized(folder/'service-lock.sqlite3'):
+        brain=Brain(db,device)
+        return dispatch(brain,operation,request,text,title)
+
+
+def dispatch(brain,operation,request,text,title):
     if operation in ('update','delete'):
         entity=request.get('entity')
         if not uid(entity):

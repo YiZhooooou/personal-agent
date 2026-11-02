@@ -105,6 +105,12 @@ class MemoryTests(unittest.TestCase):
         self.b.approve(message, False)
         self.assertEqual(build_context(self.b, "personal", chat["entity"], "continue")["history_count"], 0)
 
+    def test_context_metadata_redacts_credentials_in_titles(self):
+        self.memory(title='password=synthetic-secret', body='Git workflow')
+        context=build_context(self.a,'personal',None,'Git workflow')
+        self.assertNotIn('synthetic-secret',json.dumps(context))
+        self.assertEqual(len(context['source_records']),1)
+
     def test_sync_idempotent(self):
         event = self.memory()
         self.a.queue([event])

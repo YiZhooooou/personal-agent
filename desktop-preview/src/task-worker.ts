@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import {parseFileProposal} from './file-proposal';
 import {attachProject} from './project-input';
 import type {EventEmitter} from 'node:events';
 import path from 'node:path';
@@ -77,9 +78,10 @@ export async function runTasks(store:TaskStore,root:string,customCodex='',onRead
    try{
     const id=String(task.id);
     const context=JSON.parse(String(task.context_json||'{}'));
-    const goal=attachProject(String(task.prompt),context.projectId?context:null);
+    const goal=(task.kind==='file'?'Produce a single-file change proposal. Return ONLY JSON with name (exactly the supplied fileInput.name) and content (complete new UTF-8 file, at most 12000 bytes). Never execute actions. Use the fileInput snapshot as the original file.\n':'')+attachProject(String(task.prompt),context.projectId?context:null);
     const run=(prompt:string,onProgress:(text:string)=>void)=>execute(c,root,prompt,{isCancelled:()=>store.cancellationRequested(id),onProgress});
-    const r=task.kind==='master'?await executeMaster(store,id,goal,run):await run(goal,text=>store.progress(id,text));
+    let r=task.kind==='master'?await executeMaster(store,id,goal,run):await run(goal,text=>store.progress(id,text));
+    if(task.kind==='file'&&r.status==='succeeded'){try{parseFileProposal(r.result,context.fileInput?.name);}catch(e){r={...r,status:'failed',error:(e as Error).message};}}
     store.finish(id,r.status,r.result,r.error);if(r.stopWorker)break;
    }
    catch(e){const id=String(task.id);store.finish(id,'interrupted',String(store.get(id)?.result||''),String((e as Error).message));throw e;}

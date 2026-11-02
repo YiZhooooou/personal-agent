@@ -42,5 +42,36 @@ class ContextServiceTests(unittest.TestCase):
             self.assertEqual(call('list'),[])
             self.assertEqual(call('context',text='Git workflow')['sources'],[])
 
+    def test_memory_references_include_exact_revision_and_credentials_are_rejected(self):
+        from context_service import handle
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);project=identity()
+            first=handle(root,dict(operation='save',project=project,title='Git workflow',text='Use feature branches'))
+            context=handle(root,dict(operation='context',project=project,text='Git workflow'))
+            self.assertEqual(context['source_records'][0]['revision'],first['id'])
+            with self.assertRaisesRegex(ValueError,'Credentials'):
+                handle(root,dict(operation='save',project=project,title='secret',text='password=synthetic-secret'))
+            records=handle(root,dict(operation='list',project=project))
+            self.assertEqual(len(records),1)
+
+    def test_concurrent_memory_updates_cannot_both_overwrite_the_same_revision(self):
+        from context_service import handle
+        from concurrent.futures import ThreadPoolExecutor
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);project=identity()
+            record=handle(root,dict(operation='save',project=project,title='decision',text='original'))
+            def update(index):
+                try:
+                    handle(root,dict(operation='update',project=project,entity=record['entity'],revision=record['id'],title='decision',text='change '+str(index)))
+                    return True
+                except ValueError:
+                    return False
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                results=list(pool.map(update,range(8)))
+            self.assertEqual(sum(results),1)
+            records=handle(root,dict(operation='list',project=project))
+            self.assertEqual(len(records),1)
+            self.assertFalse(records[0]['conflict'])
+
 if __name__=='__main__':
     unittest.main()

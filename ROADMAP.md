@@ -1,3 +1,11 @@
+## Active workbench scope (2026-11-02; supersedes historical staging below)
+
+First release: persistent project handoffs/memory and source snapshots; background tasks; bounded sequential Master delegation; observable daily queues; explicit single-file review/Apply/Undo and execution handoffs. Existing Python/OneDrive/IAM implementations remain preserved references, not automatic commitments for the Electron first release.
+
+UI backlog: project navigation/panels, memory search/paging and operation feedback implemented; owner usability acceptance pending. Next improve visual diffs, task detail navigation and concise context summaries based on acceptance. No artificial version bumps.
+
+Public platform gates: clean-machine install, migration/rollback, runtime licenses/signing/update pipeline, recovery testing, documented provider/tool interfaces and scoped permission review. Add parallel/multi-file execution only after meaningful test adapters and isolation. Current leases are cooperative process coordination, not an OS sandbox.
+
 ## Local experimental checkpoint
 
 Master text workflow implemented: planner, two sequential independent assignments, summary. General multi-agent scheduling, parallelism, cross-project execution and distributable runtime packaging remain future work.

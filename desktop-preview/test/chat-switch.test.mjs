@@ -6,8 +6,8 @@ import React from 'react';
 import {create,act} from 'react-test-renderer';
 
 // Exercise the actual renderer without opening Electron or accessing user data.
-await build({entryPoints:['src/renderer.tsx'],outfile:'dist-test/renderer-test.cjs',bundle:true,platform:'node',format:'cjs',external:['react','react-dom/client'],loader:{'.css':'empty'},plugins:[{name:'test-entry',setup(b){b.onLoad({filter:/renderer\.tsx$/},async a=>({contents:(await fs.readFile(a.path,'utf8')).replace(/^createRoot\(.*$/m,'export {App,RenderBoundary,TasksPage};'),loader:'tsx'}));}}]});
-const {App,RenderBoundary,TasksPage}=await import('../dist-test/renderer-test.cjs');
+await build({entryPoints:['src/renderer.tsx'],outfile:'dist-test/renderer-test.cjs',bundle:true,platform:'node',format:'cjs',external:['react','react-dom/client'],loader:{'.css':'empty'},plugins:[{name:'test-entry',setup(b){b.onLoad({filter:/renderer\.tsx$/},async a=>({contents:(await fs.readFile(a.path,'utf8')).replace(/^createRoot\(.*$/m,'export {App,RenderBoundary,TasksPage,ProjectContext,ProjectSelector};'),loader:'tsx'}));}}]});
+const {App,RenderBoundary,TasksPage,ProjectContext,ProjectSelector}=await import('../dist-test/renderer-test.cjs');
 globalThis.IS_REACT_ACT_ENVIRONMENT=true;
 globalThis.document={documentElement:{dataset:{}}};
 function frozen(value){if(value&&typeof value==='object'){Object.values(value).forEach(frozen);Object.freeze(value);}return value;}
@@ -106,18 +106,41 @@ test('project editor saves handoff, shows history and restores with expected rev
   return {ok:true,value:{...current}};
  }}};
  let ui;try{
-  await act(async()=>{ui=create(React.createElement(TasksPage,{language:'en',space:'personal'}));});
+  await act(async()=>{ui=create(React.createElement(ProjectContext,{onSelect:()=>{}}));});
   await act(async()=>ui.root.findByProps({'aria-label':'Project'}).props.onChange({target:{value:'p'}}));
   await act(async()=>ui.root.findByProps({'aria-label':'Project handoff'}).props.onChange({target:{value:'next action'}}));
   const button=text=>ui.root.findAllByType('button').find(b=>b.children.includes(text));
-  await act(async()=>button('保存交接 / Save handoff').props.onClick());assert.equal(current.handoff,'next action');
-  await act(async()=>button('查看历史 / History').props.onClick());
-  await act(async()=>button('恢复为新版本 / Restore as new revision').props.onClick());assert.equal(restored,true);assert.equal(ui.root.findByProps({'aria-label':'Project handoff'}).props.value,'original');
+  await act(async()=>button('保存交接').props.onClick());assert.equal(current.handoff,'next action');
+  await act(async()=>button('查看历史').props.onClick());
+  await act(async()=>button('恢复为新版本').props.onClick());assert.equal(restored,true);await act(async()=>button('交接').props.onClick());assert.equal(ui.root.findByProps({'aria-label':'Project handoff'}).props.value,'original');
  }finally{if(ui)await act(async()=>ui.unmount());}
 });
 
 test('daily queue panel refreshes supervisor state and preserves retry action scope',async()=>{
  let retried=false;const project={projectId:'p',name:'P',revision:1,handoff:'',source:'user'};
- globalThis.window={agent:{tasksList:async()=>({ok:true,value:[]}),project:async r=>{const value=r.operation==='list'?[{id:'p',name:'P'}]:r.operation==='get'?project:r.operation==='scheduler-status'?{state:'running',running:true,timeZone:'America/New_York',lastCheck:'test'}:r.operation==='schedule-runs'?[{id:'attempt',schedule_id:'s',day:'2026-11-02',at:'09:00',outcome:'failed',message:'synthetic issue'}]:true;if(r.operation==='schedule-retry'){assert.equal(r.scheduleId,'s');retried=true;}return {ok:true,value};}}};
- let ui;try{await act(async()=>{ui=create(React.createElement(TasksPage,{language:'en',space:'personal'}));});await act(async()=>ui.root.findByProps({'aria-label':'Project'}).props.onChange({target:{value:'p'}}));const panel=ui.root.findAllByType('details').find(d=>d.findAllByType('summary').some(s=>s.children.includes('每日入队 / Daily queue')));await act(async()=>panel.props.onToggle({currentTarget:{open:true}}));assert.ok(ui.root.findAllByType('p').some(p=>p.children.includes('synthetic issue')));await act(async()=>ui.root.findAllByType('button').find(b=>b.children.includes('重试今日入队 / Retry today')).props.onClick());assert.equal(retried,true);}finally{if(ui)await act(async()=>ui.unmount());}
+ globalThis.window={agent:{tasksList:async()=>({ok:true,value:[]}),project:async r=>{const value=r.operation==='list'?[{id:'p',name:'P'}]:r.operation==='get'?project:r.operation==='scheduler-status'?{state:'running',running:true,timeZone:'America/New_York',lastCheck:'test'}:r.operation==='schedules'?[]:r.operation==='schedule-runs'?[{id:'attempt',schedule_id:'s',day:'2026-11-02',at:'09:00',outcome:'failed',message:'synthetic issue'}]:true;if(r.operation==='schedule-retry'){assert.equal(r.scheduleId,'s');retried=true;}return {ok:true,value};}}};
+ let ui;try{await act(async()=>{ui=create(React.createElement(ProjectContext,{onSelect:()=>{}}));});await act(async()=>ui.root.findByProps({'aria-label':'Project'}).props.onChange({target:{value:'p'}}));await act(async()=>ui.root.findAllByType('button').find(b=>b.children.includes('计划')).props.onClick());assert.ok(ui.root.findAllByType('p').some(p=>p.children.includes('synthetic issue')));await act(async()=>ui.root.findAllByType('button').find(b=>b.children.includes('重试今日入队')).props.onClick());assert.equal(retried,true);}finally{if(ui)await act(async()=>ui.unmount());}
+});
+
+test('history refreshes stale project revision after a task promotes its result',async()=>{
+ let revision=2;globalThis.window={agent:{tasksList:async()=>({ok:true,value:[]}),project:async r=>({ok:true,value:r.operation==='list'?[{id:'p',name:'P'}]:r.operation==='get'?{projectId:'p',revision,handoff:'v'+revision,source:'user'}:r.operation==='history'?[{revision:3,handoff:'v3',source:'task'},{revision:2,handoff:'v2',source:'user'}]:true})}};
+ let ui;try{await act(async()=>{ui=create(React.createElement(ProjectContext,{onSelect:()=>{}}));});await act(async()=>ui.root.findByProps({'aria-label':'Project'}).props.onChange({target:{value:'p'}}));revision=3;await act(async()=>ui.root.findAllByType('button').find(b=>b.children.includes('查看历史')).props.onClick());const restore=ui.root.findAllByType('button').filter(b=>b.children.includes('恢复为新版本'));assert.equal(restore[0].props.disabled,true);assert.equal(restore[1].props.disabled,false);await act(async()=>ui.root.findAllByType('button').find(b=>b.children.includes('交接')).props.onClick());assert.equal(ui.root.findByProps({'aria-label':'Project handoff'}).props.value,'v3');}finally{if(ui)await act(async()=>ui.unmount());}
+});
+
+test('memory management starts with saved cards and reveals editor only on request',async()=>{
+ const project={projectId:'p',name:'P',revision:1,handoff:'',source:'user'};globalThis.window={agent:{project:async r=>({ok:true,value:r.operation==='list'?[{id:'p',name:'P'}]:r.operation==='get'?project:r.operation==='memory'?[{id:'m',entity:'e',data:{body:'saved convention',status:'confirmed'}}]:true})}};
+ let ui;try{await act(async()=>{ui=create(React.createElement(ProjectContext,{onSelect:()=>{}}));});await act(async()=>ui.root.findByProps({'aria-label':'Project'}).props.onChange({target:{value:'p'}}));await act(async()=>ui.root.findAllByType('button').find(b=>b.children.includes('记忆')).props.onClick());assert.equal(ui.root.findAllByProps({'aria-label':'Project memory'}).length,0);assert.ok(ui.root.findByProps({className:'memory-card'}));await act(async()=>ui.root.findAllByType('button').find(b=>b.children.includes('新增记忆')).props.onClick());assert.equal(ui.root.findAllByProps({'aria-label':'Project memory'}).length,1);}finally{if(ui)await act(async()=>ui.unmount());}
+});
+test('file task mode submits selected filename and goal without manual JSON prompting',async()=>{
+ let submitted=false;globalThis.window={agent:{tasksList:async()=>({ok:true,value:[]}),project:async r=>{if(r.operation==='list')return {ok:true,value:[{id:'p',name:'P'}]};assert.equal(r.operation,'file-task');assert.equal(r.id,'p');assert.equal(r.name,'app.js');assert.equal(r.text,'Change answer to 2');submitted=true;return {ok:true,value:{id:'file',status:'queued',prompt:r.text}};}}};
+ let ui;try{await act(async()=>{ui=create(React.createElement(TasksPage,{language:'en',space:'personal'}));});await act(async()=>ui.root.findByProps({'aria-label':'Project'}).props.onChange({target:{value:'p'}}));await act(async()=>ui.root.findByProps({'aria-label':'Execution mode'}).props.onChange({target:{value:'file'}}));await act(async()=>ui.root.findByProps({'aria-label':'Proposal filename'}).props.onChange({target:{value:'app.js'}}));await act(async()=>ui.root.findByProps({id:'task-prompt'}).props.onChange({target:{value:'Change answer to 2'}}));await act(async()=>ui.root.findAllByType('button').find(b=>b.children.includes('Save task')).props.onClick());assert.equal(submitted,true);}finally{if(ui)await act(async()=>ui.unmount());}
+});
+test('task composition can be restored after navigating to project management',async()=>{
+ globalThis.window={agent:{tasksList:async()=>({ok:true,value:[]}),project:async()=>({ok:true,value:[{id:'p',name:'P'}]})}};let saved;
+ let ui;try{await act(async()=>{ui=create(React.createElement(TasksPage,{language:'en',space:'personal',onCompositionChange:value=>{saved=value;}}));});await act(async()=>ui.root.findByProps({id:'task-prompt'}).props.onChange({target:{value:'Do not lose this draft'}}));await act(async()=>ui.unmount());await act(async()=>{ui=create(React.createElement(TasksPage,{language:'en',space:'personal',initialComposition:saved}));});assert.equal(ui.root.findByProps({id:'task-prompt'}).props.value,'Do not lose this draft');}finally{if(ui)await act(async()=>ui.unmount());}
+});
+
+test('memory search and pagination preserve access to older saved records',async()=>{
+ const project={projectId:'p',name:'P',revision:1,handoff:'',source:'user'};const rows=Array.from({length:25},(_,i)=>({id:'r'+i,entity:'e'+i,data:{title:'Record '+i,body:'Convention '+i,status:'confirmed'}}));globalThis.window={agent:{project:async r=>({ok:true,value:r.operation==='list'?[{id:'p',name:'P'}]:r.operation==='get'?project:rows})}};
+ let ui;try{await act(async()=>{ui=create(React.createElement(ProjectContext,{onSelect:()=>{}}));});await act(async()=>ui.root.findByProps({'aria-label':'Project'}).props.onChange({target:{value:'p'}}));await act(async()=>ui.root.findAllByType('button').find(b=>b.children.includes('记忆')).props.onClick());assert.equal(ui.root.findAllByProps({className:'memory-card'}).length,20);await act(async()=>ui.root.findAllByType('button').find(b=>b.children.includes('显示更多记忆')).props.onClick());assert.equal(ui.root.findAllByProps({className:'memory-card'}).length,25);await act(async()=>ui.root.findByProps({'aria-label':'Search memories'}).props.onChange({target:{value:'Convention 24'}}));assert.equal(ui.root.findAllByProps({className:'memory-card'}).length,1);}finally{if(ui)await act(async()=>ui.unmount());}
 });
