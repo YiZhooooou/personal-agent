@@ -310,9 +310,11 @@ def build_context(brain, space, chat, prompt):
         sources.append(d["title"])
     # Search past conversations in the current space, rather than assuming that
     # keeping a transcript alone makes it available across new chats.
-    chat_titles = {e["entity"]: e["data"]["title"] for e in brain.entities(space, "chat")}
+    chat_titles = {e["entity"]: e["data"]["title"] for e in brain.entities(space, "chat") if not e["conflict"] and brain.approved(e)}
     archive = []
     for event in brain.entities(space, "message"):
+        if event["conflict"] or not brain.approved(event):
+            continue
         d = event["data"]
         if d["chat"] == chat or d["chat"] not in chat_titles:
             continue
@@ -333,8 +335,9 @@ def build_context(brain, space, chat, prompt):
     recent = []
     used = 0
     all_messages = brain.messages(chat, space) if chat else []
+    eligible_messages = [e for e in all_messages if chat in chat_titles and not e["conflict"] and brain.approved(e)]
     # Keep the most recent contiguous tail. Never search confidential spaces.
-    for event in reversed(all_messages[-24:]):
+    for event in reversed(eligible_messages[-24:]):
         text = event["data"]["text"]
         if used + len(text) > 20000:
             break

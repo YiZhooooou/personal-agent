@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import {attachProject} from './project-input';
 import type {EventEmitter} from 'node:events';
 import path from 'node:path';
 import {TaskStore} from './task-store';
@@ -60,7 +61,7 @@ export async function execute(c:Pick<Codex,'request'|'close'> & Pick<EventEmitte
  });
 }
 
-export async function runTasks(store:TaskStore,root:string,customCodex='',onReady=()=>{}){
+export async function runTasks(store:TaskStore,root:string,customCodex='',onReady=()=>{},projectId=''){
  let unlock:(()=>void)|undefined;
  for(let attempt=0;!unlock;attempt++){
   try{unlock=await acquireWorker(root);}catch(e){if(attempt>=4)throw e;await new Promise(r=>setTimeout(r,100));}
@@ -72,11 +73,13 @@ export async function runTasks(store:TaskStore,root:string,customCodex='',onRead
   const account=await c.request('account/read',{refreshToken:false});
   if(account.account?.type!=='chatgpt')throw new Error('Sign in to this data directory with the desktop test first. Queued tasks were preserved.');
   onReady();
-  for(let task=store.claim();task;task=store.claim()){
+  for(let task=store.claim(projectId);task;task=store.claim(projectId)){
    try{
     const id=String(task.id);
+    const context=JSON.parse(String(task.context_json||'{}'));
+    const goal=attachProject(String(task.prompt),context.projectId?context:null);
     const run=(prompt:string,onProgress:(text:string)=>void)=>execute(c,root,prompt,{isCancelled:()=>store.cancellationRequested(id),onProgress});
-    const r=task.kind==='master'?await executeMaster(store,id,String(task.prompt),run):await run(String(task.prompt),text=>store.progress(id,text));
+    const r=task.kind==='master'?await executeMaster(store,id,goal,run):await run(goal,text=>store.progress(id,text));
     store.finish(id,r.status,r.result,r.error);if(r.stopWorker)break;
    }
    catch(e){const id=String(task.id);store.finish(id,'interrupted',String(store.get(id)?.result||''),String((e as Error).message));throw e;}

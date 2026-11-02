@@ -81,9 +81,37 @@ test('task page submits master mode and displays persisted step results',async()
  globalThis.window={agent:{tasksList:async()=>({ok:true,value:submitted?[task]:[]}),taskGet:async()=>({ok:true,value:task}),taskSubmit:async(prompt,key,kind)=>{assert.equal(kind,'master');assert.equal(prompt,'goal');submitted=true;return {ok:true,value:task};}}};
  let ui;try{
   await act(async()=>{ui=create(React.createElement(TasksPage,{language:'en',space:'personal'}));});
-  await act(async()=>ui.root.findByType('select').props.onChange({target:{value:'master'}}));
+  await act(async()=>ui.root.findByProps({'aria-label':'Execution mode'}).props.onChange({target:{value:'master'}}));
   await act(async()=>ui.root.findByType('textarea').props.onChange({target:{value:'goal'}}));
   await act(async()=>ui.root.findAllByType('button').find(b=>b.children.includes('Save task')).props.onClick());
   assert.equal(submitted,true);assert.ok(ui.root.findByType('details').findAllByType('p').some(p=>p.children.includes('child evidence')));
+ }finally{if(ui)await act(async()=>ui.unmount());}
+});
+
+test('completed project task can explicitly promote its result to handoff',async()=>{
+ const task={id:'handoff-task',request_key:'key',status:'succeeded',prompt:'goal',result:'next step',context_json:'{"projectId":"p","revision":1}',created:'2026-11-01T12:00:00Z',updated:'2026-11-01T12:00:00Z'};
+ let adopted=false;
+ globalThis.window={agent:{tasksList:async()=>({ok:true,value:[task]}),taskGet:async()=>({ok:true,value:task}),project:async request=>{if(request.operation==='adopt'){assert.equal(request.taskId,task.id);adopted=true;return {ok:true,value:{revision:2}};}return {ok:true,value:[]};}}};
+ let ui;try{await act(async()=>{ui=create(React.createElement(TasksPage,{language:'en',space:'personal'}));});await act(async()=>ui.root.findByProps({className:'task-row'}).props.onClick());await act(async()=>ui.root.findAllByType('button').find(b=>b.children.includes('Use result as project handoff')).props.onClick());assert.equal(adopted,true);assert.match(ui.root.findByProps({role:'status'}).children.join(''),/handoff saved/);}finally{if(ui)await act(async()=>ui.unmount());}
+});
+
+test('project editor saves handoff, shows history and restores with expected revision',async()=>{
+ let current={projectId:'p',name:'Project',revision:1,handoff:'',source:'created'};let restored=false;
+ globalThis.window={agent:{tasksList:async()=>({ok:true,value:[]}),project:async r=>{
+  if(r.operation==='list')return {ok:true,value:[{id:'p',name:'Project'}]};
+  if(r.operation==='get')return {ok:true,value:{...current}};
+  if(r.operation==='save'){assert.equal(r.revision,1);current={...current,revision:2,handoff:r.text};}
+  if(r.operation==='history')return {ok:true,value:[{revision:1,handoff:'original',source:'created',created:'test'}]};
+  if(r.operation==='restore'){assert.equal(r.revision,2);assert.equal(r.target,1);restored=true;current={...current,revision:3,handoff:'original'};}
+  return {ok:true,value:{...current}};
+ }}};
+ let ui;try{
+  await act(async()=>{ui=create(React.createElement(TasksPage,{language:'en',space:'personal'}));});
+  await act(async()=>ui.root.findByProps({'aria-label':'Project'}).props.onChange({target:{value:'p'}}));
+  await act(async()=>ui.root.findByProps({'aria-label':'Project handoff'}).props.onChange({target:{value:'next action'}}));
+  const button=text=>ui.root.findAllByType('button').find(b=>b.children.includes(text));
+  await act(async()=>button('保存交接 / Save handoff').props.onClick());assert.equal(current.handoff,'next action');
+  await act(async()=>button('查看历史 / History').props.onClick());
+  await act(async()=>button('恢复为新版本 / Restore as new revision').props.onClick());assert.equal(restored,true);assert.equal(ui.root.findByProps({'aria-label':'Project handoff'}).props.value,'original');
  }finally{if(ui)await act(async()=>ui.unmount());}
 });

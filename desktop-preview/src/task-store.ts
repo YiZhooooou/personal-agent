@@ -1,3 +1,4 @@
+import {memoryContext} from './project-memory';
 import {DatabaseSync} from 'node:sqlite';
 import {randomUUID} from 'node:crypto';
 import fs from 'node:fs';
@@ -5,34 +6,37 @@ import path from 'node:path';
 
 export class TaskStore {
  db:DatabaseSync;
- constructor(root:string){
+ constructor(public root:string){
   fs.mkdirSync(root,{recursive:true});
   this.db=new DatabaseSync(path.join(root,'tasks.sqlite3'));
   this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;`);
   this.db.exec('BEGIN IMMEDIATE');
   try{
    const version=Number(this.db.prepare('PRAGMA user_version').get()!.user_version);
-   if(version>2)throw new Error('Task database is newer than this application.');
+   if(version>4)throw new Error('Task database is newer than this application.');
    this.db.exec(`
    CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY, request_key TEXT UNIQUE NOT NULL, prompt TEXT NOT NULL,
    status TEXT NOT NULL, result TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT '', created TEXT NOT NULL, updated TEXT NOT NULL,
    cancel_requested INTEGER NOT NULL DEFAULT 0);`);
    if(!this.db.prepare('PRAGMA table_info(tasks)').all().some(c=>c.name==='cancel_requested'))this.db.exec('ALTER TABLE tasks ADD COLUMN cancel_requested INTEGER NOT NULL DEFAULT 0');
    if(!this.db.prepare('PRAGMA table_info(tasks)').all().some(c=>c.name==='kind'))this.db.exec("ALTER TABLE tasks ADD COLUMN kind TEXT NOT NULL DEFAULT 'text'");
-   this.db.exec("CREATE TABLE IF NOT EXISTS task_steps(task_id TEXT NOT NULL,position INTEGER NOT NULL,title TEXT NOT NULL,prompt TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'queued',result TEXT NOT NULL DEFAULT '',error TEXT NOT NULL DEFAULT '',PRIMARY KEY(task_id,position)); PRAGMA user_version=2; COMMIT");
+   this.db.exec("CREATE TABLE IF NOT EXISTS task_steps(task_id TEXT NOT NULL,position INTEGER NOT NULL,title TEXT NOT NULL,prompt TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'queued',result TEXT NOT NULL DEFAULT '',error TEXT NOT NULL DEFAULT '',PRIMARY KEY(task_id,position)); CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY,name TEXT NOT NULL,handoff TEXT NOT NULL,revision INTEGER NOT NULL DEFAULT 1);");
+   if(!this.db.prepare('PRAGMA table_info(tasks)').all().some(c=>c.name==='context_json'))this.db.exec("ALTER TABLE tasks ADD COLUMN context_json TEXT NOT NULL DEFAULT '{}'");
+   this.db.exec("CREATE TABLE IF NOT EXISTS project_history(project_id TEXT NOT NULL,revision INTEGER NOT NULL,handoff TEXT NOT NULL,source TEXT NOT NULL,created TEXT NOT NULL,PRIMARY KEY(project_id,revision)); INSERT OR IGNORE INTO project_history SELECT id,revision,handoff,'Existing project snapshot',datetime('now') FROM projects; PRAGMA user_version=4; COMMIT");
   }catch(e){this.db.exec('ROLLBACK');this.db.close();throw e;}
  }
- submit(prompt:string,key:string,kind='text'){
+ submit(prompt:string,key:string,kind='text',projectId=''){
+  const context=projectId?{...this.projectContext(projectId),memories:memoryContext(this.root,projectId,prompt)}:{};
   if(!['text','master'].includes(kind))throw new Error('Invalid task kind');
   if(!prompt.trim()||prompt.length>16000||!key.trim()||key.length>200)throw new Error('Provide a prompt (1–16000 characters) and request key (1–200 characters).');
   const id=randomUUID(),now=new Date().toISOString();
-  this.db.prepare('INSERT INTO tasks(id,request_key,prompt,status,created,updated,kind) VALUES(?,?,?,\'queued\',?,?,?) ON CONFLICT(request_key) DO NOTHING').run(id,key,prompt,now,now,kind);
+  this.db.prepare('INSERT INTO tasks(id,request_key,prompt,status,created,updated,kind,context_json) VALUES(?,?,?,\'queued\',?,?,?,?) ON CONFLICT(request_key) DO NOTHING').run(id,key,prompt,now,now,kind,JSON.stringify(context));
   const task=this.db.prepare('SELECT * FROM tasks WHERE request_key=?').get(key)!;
-  if(task.prompt!==prompt||task.kind!==kind)throw new Error('Request key already belongs to a different prompt');return task;
+  if(task.prompt!==prompt||task.kind!==kind||String(JSON.parse(String(task.context_json)).projectId||'')!==projectId)throw new Error('Request key already belongs to a different prompt');return task;
  }
  get(id:string){return this.db.prepare('SELECT * FROM tasks WHERE id=?').get(id);}
- list(){return this.db.prepare('SELECT id,request_key,substr(prompt,1,80) AS title,status,created,updated,kind FROM tasks ORDER BY created DESC,id').all();}
- claim(){return this.db.prepare("UPDATE tasks SET status='running',updated=? WHERE id=(SELECT id FROM tasks WHERE status='queued' ORDER BY created,id LIMIT 1) RETURNING *").get(new Date().toISOString());}
+ list(){return this.db.prepare("SELECT id,request_key,substr(prompt,1,80) AS title,status,created,updated,kind,json_extract(context_json,'$.projectId') AS project_id,json_extract(context_json,'$.name') AS project_name FROM tasks ORDER BY created DESC,id").all();}
+ claim(projectId=''){return this.db.prepare("UPDATE tasks SET status='running',updated=? WHERE id=(SELECT id FROM tasks WHERE status='queued' AND (?='' OR json_extract(context_json,'$.projectId')=?) ORDER BY created,id LIMIT 1) RETURNING *").get(new Date().toISOString(),projectId,projectId);}
  cancel(id:string){
   if(!this.get(id))throw new Error('Task not found');
   this.db.prepare("UPDATE tasks SET status=CASE WHEN status='queued' THEN 'cancelled' ELSE 'cancelling' END,cancel_requested=1,updated=? WHERE id=? AND status IN ('queued','running','cancelling')").run(new Date().toISOString(),id);
@@ -46,6 +50,37 @@ export class TaskStore {
   if(changed.changes!==1)throw new Error('Task is not running');
   this.db.prepare("UPDATE task_steps SET status=? WHERE task_id=? AND status IN ('running','queued')").run(status==='cancelled'?'cancelled':'interrupted',id);
   this.db.exec('COMMIT');
+  }catch(e){this.db.exec('ROLLBACK');throw e;}
+ }
+ adoptTask(id:string){
+  const task=this.get(id);if(!task||task.status!=='succeeded')throw new Error('Only completed tasks can become a project handoff');
+  const context=JSON.parse(String(task.context_json));if(!context.projectId)throw new Error('Task has no project');
+  const result=String(task.result);if(!result.trim()||result.length>7000)throw new Error('Result is empty or too long; edit the handoff manually');
+  const text='Completed task: '+String(task.prompt).slice(0,500)+'\nResult:\n'+result+'\nSource task: '+id;
+  return this.saveHandoff(String(context.projectId),text,Number(context.revision),'Task '+id);
+ }
+ projects(){return this.db.prepare('SELECT * FROM projects ORDER BY name,id').all();}
+ createProject(name:string){
+  if(typeof name!=='string'||!name.trim()||name.length>120)throw new Error('Invalid project name');
+  const id=randomUUID();this.db.prepare("INSERT INTO projects(id,name,handoff) VALUES(?,?,'')").run(id,name.trim());this.db.prepare("INSERT INTO project_history VALUES(?,1,'','Project created',?)").run(id,new Date().toISOString());return this.projectContext(id);
+ }
+ projectContext(id:string){
+  const p=this.db.prepare('SELECT * FROM projects WHERE id=?').get(id);if(!p)throw new Error('Project not found');
+  return {projectId:String(p.id),name:String(p.name),revision:Number(p.revision),handoff:String(p.handoff),source:String(this.db.prepare('SELECT source FROM project_history WHERE project_id=? AND revision=?').get(id,p.revision)?.source||'User-saved project handoff')};
+ }
+ history(id:string){this.projectContext(id);return this.db.prepare('SELECT revision,handoff,source,created FROM project_history WHERE project_id=? ORDER BY revision DESC').all(id);}
+ restoreHandoff(id:string,target:number,revision:number){
+  if(!Number.isSafeInteger(target))throw new Error('Invalid history revision');
+  const old=this.db.prepare('SELECT handoff FROM project_history WHERE project_id=? AND revision=?').get(id,target);if(!old)throw new Error('History not found');
+  return this.saveHandoff(id,String(old.handoff),revision,'Restored revision '+target);
+ }
+ saveHandoff(id:string,text:string,revision:number,source='User-saved project handoff'){
+  if(typeof text!=='string'||text.length>8000||!Number.isSafeInteger(revision))throw new Error('Invalid handoff');
+  this.db.exec('BEGIN IMMEDIATE');try{
+   const r=this.db.prepare('UPDATE projects SET handoff=?,revision=revision+1 WHERE id=? AND revision=?').run(text,id,revision);
+   if(r.changes!==1)throw new Error('Project changed; reload before saving');
+   this.db.prepare('INSERT INTO project_history VALUES(?,?,?,?,?)').run(id,revision+1,text,source,new Date().toISOString());
+   this.db.exec('COMMIT');return this.projectContext(id);
   }catch(e){this.db.exec('ROLLBACK');throw e;}
  }
  steps(id:string){return this.db.prepare('SELECT position,title,prompt,status,result,error FROM task_steps WHERE task_id=? ORDER BY position').all(id);}

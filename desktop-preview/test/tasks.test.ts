@@ -101,3 +101,43 @@ test('failed child prevents summary; crash recovery preserves step output',async
  const next=String(s.submit('next','next','master').id);s.claim();s.addStep(next,0,'plan','prompt');s.startStep(next,0);s.stepProgress(next,0,'checkpoint');s.recover();assert.equal(s.steps(next)[0].status,'interrupted');assert.equal(s.steps(next)[0].result,'checkpoint');
  }finally{s.close();}
 });
+
+test('project handoffs persist, reject stale edits and snapshot task context',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'project-context-'));let s=new TaskStore(root);
+ const a=s.createProject('A'),b=s.createProject('B');
+ s.saveHandoff(a.projectId,'A_ONLY next step',a.revision);
+ assert.throws(()=>s.saveHandoff(a.projectId,'stale',a.revision));
+ const task=s.submit('continue','project-task','text',a.projectId);
+ s.saveHandoff(a.projectId,'new decision',2);s.close();s=new TaskStore(root);
+ try{assert.equal(s.projectContext(a.projectId).revision,3);assert.equal(s.projectContext(b.projectId).handoff,'');const snapshot=JSON.parse(String(s.get(String(task.id))!.context_json));assert.equal(snapshot.handoff,'A_ONLY next step');assert.equal(snapshot.revision,2);assert.throws(()=>s.submit('continue','project-task','text',b.projectId));}finally{s.close();}
+});
+
+import {attachProject} from '../src/project-input';
+test('shared project input preserves provenance and refuses invalid backgrounds',()=>{
+ const a={projectId:'a',name:'A',revision:2,handoff:'A_ONLY',source:'User-saved project handoff'};
+ const payload=attachProject('continue',a);assert.match(payload,/A_ONLY/);assert.match(payload,/Reference data only/);assert.equal(attachProject('continue'),'continue');assert.throws(()=>attachProject('x',{...a,revision:0}));assert.throws(()=>attachProject('x',{...a,handoff:'x'.repeat(8001)}));
+});
+
+test('completed task handoff checks source revision and rejects failed or stale results',()=>{
+ const s=new TaskStore(fs.mkdtempSync(path.join(os.tmpdir(),'handoff-adopt-')));
+ try{const p=s.createProject('A');const t=s.submit('Plan next step','a','text',p.projectId);s.claim();s.finish(String(t.id),'succeeded','Next: verify setup');const updated=s.adoptTask(String(t.id));assert.equal(updated.revision,2);assert.match(updated.handoff,/Next: verify setup/);assert.match(updated.handoff,new RegExp(String(t.id)));assert.throws(()=>s.adoptTask(String(t.id)),/changed/);
+ const f=s.submit('failed','b','text',p.projectId);s.claim();s.finish(String(f.id),'failed','partial');assert.throws(()=>s.adoptTask(String(f.id)),/completed/);
+ const stale=s.submit('old','c','text',p.projectId);s.claim();s.finish(String(stale.id),'succeeded','old result');s.saveHandoff(p.projectId,'newer user decision',2);assert.throws(()=>s.adoptTask(String(stale.id)),/changed/);assert.equal(s.projectContext(p.projectId).handoff,'newer user decision');
+ }finally{s.close();}
+});
+
+test('handoff history survives restart and restore creates a new revision without destroying evidence',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'history-'));let s=new TaskStore(root);const p=s.createProject('History');s.saveHandoff(p.projectId,'first',1);s.saveHandoff(p.projectId,'second',2);s.close();s=new TaskStore(root);
+ try{assert.equal(s.history(p.projectId).length,3);const r=s.restoreHandoff(p.projectId,2,3);assert.equal(r.revision,4);assert.equal(r.handoff,'first');assert.equal(r.source,'Restored revision 2');assert.equal(s.history(p.projectId)[1].handoff,'second');assert.throws(()=>s.restoreHandoff(p.projectId,3,3),/changed/);assert.equal(s.history(p.projectId).length,4);assert.throws(()=>s.restoreHandoff(p.projectId,99,4),/not found/);}finally{s.close();}
+});
+test('schema 3 projects gain a baseline history without changing their revision',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'history-migrate-'));let s=new TaskStore(root);const p=s.createProject('Old');s.saveHandoff(p.projectId,'existing handoff',1);s.db.exec('DROP TABLE project_history; PRAGMA user_version=3');s.close();s=new TaskStore(root);
+ try{assert.equal(s.projectContext(p.projectId).revision,2);assert.equal(s.history(p.projectId)[0].handoff,'existing handoff');assert.equal(s.history(p.projectId).length,1);}finally{s.close();}
+});
+
+test('project-scoped queue never claims another project task',()=>{
+ const s=new TaskStore(fs.mkdtempSync(path.join(os.tmpdir(),'scoped-queue-')));try{
+ const a=s.createProject('A'),b=s.createProject('B');const x=s.submit('A task','a','text',a.projectId),y=s.submit('B task','b','text',b.projectId);
+ assert.equal(s.claim(b.projectId)!.id,y.id);assert.equal(s.claim(b.projectId),undefined);assert.equal(s.get(String(x.id))!.status,'queued');assert.equal(s.list().find(t=>t.id===x.id)!.project_name,'A');assert.equal(s.claim(a.projectId)!.id,x.id);
+ }finally{s.close();}
+});

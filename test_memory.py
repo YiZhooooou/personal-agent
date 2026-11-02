@@ -88,6 +88,23 @@ class MemoryTests(unittest.TestCase):
         self.b.approve(event)
         self.assertTrue(build_context(self.b, "personal", None, "hello")["sources"])
 
+    def test_imported_chat_requires_approval_for_archive_and_current_history(self):
+        chat = self.chat(title="synthetic history")
+        message = self.a.save("message", "personal", {"chat": chat["entity"], "role": "user", "text": "synthetic history content"})
+        self.a.queue(self.a.publishable(chat["entity"]))
+        self.a.sync(self.exchange)
+        self.b.sync(self.exchange)
+        for current in (None, chat["entity"]):
+            context = build_context(self.b, "personal", current, "synthetic history")
+            self.assertEqual(context["sources"], [])
+            self.assertEqual(context["history_count"], 0)
+        self.b.approve(chat)
+        self.b.approve(message)
+        self.assertTrue(build_context(self.b, "personal", None, "synthetic history")["sources"])
+        self.assertEqual(build_context(self.b, "personal", chat["entity"], "continue")["history_count"], 1)
+        self.b.approve(message, False)
+        self.assertEqual(build_context(self.b, "personal", chat["entity"], "continue")["history_count"], 0)
+
     def test_sync_idempotent(self):
         event = self.memory()
         self.a.queue([event])

@@ -5,6 +5,7 @@
   "description": "Plan-backed Personal Agent desktop preview",
   "main": "dist/main.cjs",
   "scripts": {
+    "build:memory": "node scripts/build-memory.mjs",
     "build": "tsc --noEmit && node scripts/build.mjs",
     "start": "electron .",
     "test": "node scripts/test.mjs",
