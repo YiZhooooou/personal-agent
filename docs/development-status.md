@@ -1,3 +1,7 @@
+## 2026-11-02 — 求职方向重新确认（晚于此前通用工作台检查点）
+
+用户确认一个持续 Master + 并排求职看板；成功标准为少翻聊天、不错过跟进、清楚岗位进度。Gmail 只读、LinkedIn/Indeed 优先岗位来源、审核后人工提交、10 点简报当天补发、Windows 后台与提醒。完整边界、复用矩阵和实施顺序见 [产品约定与复用审查](job-workbench-direction.md)。先做结构化岗位/邮件/待办和界面，不再扩展通用文件执行；保留已有代码与用户数据。本次只有文档/源代码审查，无 Gmail/网站访问、无产品代码变更，无新功能测试或发布。
+
 ## 2026-11-02 — Autonomous workbench checkpoint
 
 Completed first-class source-bound file tasks, execution/rollback handoffs, folder-scoped write ownership and bounded Master planning (1–3 children). Refactored navigation into Projects plus compact Chat/Task selectors, with separate management panels, search/paging and operation feedback. Exact memory source revisions now accompany retrieval; service-level serialization prevents concurrent stale memory edits. Obvious credential file/content checks apply before snapshots and proposal writes.

@@ -1,3 +1,7 @@
+## 当前优先方向：求职工作台（用户问答后重新确认）
+
+以 [产品约定与复用审查](docs/job-workbench-direction.md) 为准：一个持续 Master + 求职看板，优先减少翻聊天、跟进遗漏和进度不清。先交付岗位/邮件/待办结构化闭环，后扩展找岗位和人工提交前的辅助填表。旧文件执行/通用多 agent 退出第一版主线，旧数据和代码保留。新求职功能尚未实现；当前是范围审查与复用决策。
+
 ## Active workbench scope (2026-11-02; supersedes historical staging below)
 
 First release: persistent project handoffs/memory and source snapshots; background tasks; bounded sequential Master delegation; observable daily queues; explicit single-file review/Apply/Undo and execution handoffs. Existing Python/OneDrive/IAM implementations remain preserved references, not automatic commitments for the Electron first release.

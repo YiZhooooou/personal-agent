@@ -1,3 +1,7 @@
+## 当前优先方向：求职工作台（用户问答后重新确认）
+
+以 [产品约定与复用审查](docs/job-workbench-direction.md) 为准：一个持续 Master + 求职看板，优先减少翻聊天、跟进遗漏和进度不清。先交付岗位/邮件/待办结构化闭环，后扩展找岗位和人工提交前的辅助填表。旧文件执行/通用多 agent 退出第一版主线，旧数据和代码保留。新求职功能尚未实现；当前是范围审查与复用决策。
+
 # Personal Agent
 
 A Windows personal desktop assistant for conversations, local memory, tasks and optional IAM lab tools.
