@@ -1,0 +1,103 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {TaskStore} from '../src/task-store';
+import {acquireWorker} from '../src/task-worker';
+import {requirePersonal} from '../src/task-service';
+test('task IPC policy only allows Personal space',()=>{assert.doesNotThrow(()=>requirePersonal('personal'));assert.throws(()=>requirePersonal('work'));assert.throws(()=>requirePersonal('lab'));});
+test('request keys deduplicate tasks and reject mismatched requests',()=>{
+ const s=new TaskStore(fs.mkdtempSync(path.join(os.tmpdir(),'task-test-')));
+ try{const a=s.submit('hello','event-1');assert.equal(a!.id,s.submit('hello','event-1')!.id);assert.throws(()=>s.submit('different','event-1'));assert.throws(()=>s.submit('','event-2'));assert.equal(s.list().length,1);}finally{s.close();}
+});
+test('results survive restart and unfinished work becomes interrupted without replay',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'task-test-'));let s=new TaskStore(root);
+ const done=s.submit('done','a')!;s.claim();s.finish(String(done.id),'succeeded','saved result');
+ const unfinished=s.submit('unfinished','b')!;s.claim();s.close();
+ s=new TaskStore(root);try{s.recover();assert.equal(s.get(String(done.id))!.result,'saved result');assert.equal(s.get(String(unfinished.id))!.status,'interrupted');assert.equal(s.claim(),undefined);assert.throws(()=>s.finish(String(done.id),'failed',''));}finally{s.close();}
+});
+test('second worker cannot take ownership of the same data directory',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'task-test-'));const release=await acquireWorker(root);
+ try{await assert.rejects(acquireWorker(root),/ownership unavailable/);}finally{release();}
+ const next=await acquireWorker(root);next();
+});
+import {EventEmitter} from 'node:events';
+import {DatabaseSync} from 'node:sqlite';
+import {execute} from '../src/task-worker';
+
+test('old task database upgrades without losing saved results',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'task-migration-'));
+ const db=new DatabaseSync(path.join(root,'tasks.sqlite3'));
+ db.exec("CREATE TABLE tasks(id TEXT PRIMARY KEY,request_key TEXT UNIQUE NOT NULL,prompt TEXT NOT NULL,status TEXT NOT NULL,result TEXT NOT NULL DEFAULT '',error TEXT NOT NULL DEFAULT '',created TEXT NOT NULL,updated TEXT NOT NULL); INSERT INTO tasks VALUES('old','key','old prompt','succeeded','saved','','2026','2026')");db.close();
+ const s=new TaskStore(root);try{assert.equal(s.get('old')!.result,'saved');assert.equal(s.get('old')!.cancel_requested,0);assert.equal(s.list()[0].title,'old prompt');s.cancel('old');assert.equal(s.get('old')!.status,'succeeded');}finally{s.close();}
+});
+test('queued cancellation prevents execution; running cancellation preserves crash progress',()=>{
+ const s=new TaskStore(fs.mkdtempSync(path.join(os.tmpdir(),'task-cancel-')));
+ try{const a=String(s.submit('queued','a').id);s.cancel(a);assert.equal(s.claim(),undefined);assert.equal(s.get(a)!.status,'cancelled');
+ const b=String(s.submit('running','b').id);s.claim();s.progress(b,'partial');s.cancel(b);assert.equal(s.cancellationRequested(b),true);assert.equal(s.get(b)!.status,'cancelling');s.recover();assert.equal(s.get(b)!.result,'partial');assert.equal(s.get(b)!.status,'interrupted');}finally{s.close();}
+});
+class FakeCodex extends EventEmitter {
+ calls:string[]=[];closed=false;interrupted=true;
+ async request(method:string){this.calls.push(method);if(method==='turn/interrupt'&&this.interrupted)queueMicrotask(()=>this.emit('notification','turn/completed',{threadId:'t',turn:{status:'interrupted'}}));return {thread:{id:'t'},turn:{id:'u'}};}
+ close(){this.closed=true;}
+}
+const tick=()=>new Promise(r=>setTimeout(r,15));
+test('cancelling streaming task interrupts once and keeps partial output',async()=>{
+ const c=new FakeCodex();let cancelled=false,saved='';const result=execute(c,'test','synthetic',{isCancelled:()=>cancelled,onProgress:s=>saved=s,pollMs:5});
+ await tick();c.emit('notification','item/agentMessage/delta',{threadId:'t',delta:'partial'});await tick();cancelled=true;
+ const r=await result;assert.equal(r.status,'cancelled');assert.equal(r.result,'partial');assert.equal(saved,'partial');assert.equal(c.calls.filter(m=>m==='turn/interrupt').length,1);assert.equal(c.listenerCount('notification'),0);
+});
+test('unacknowledged cancellation closes local execution after grace period',async()=>{
+ const c=new FakeCodex();c.interrupted=false;let cancelled=false;const result=execute(c,'test','synthetic',{isCancelled:()=>cancelled,onProgress:()=>{},pollMs:5,cancelGraceMs:20});await tick();cancelled=true;
+ const r=await result;assert.equal(r.status,'cancelled');assert.equal(r.stopWorker,true);assert.equal(c.closed,true);
+});
+test('completed response wins late cancellation and disconnection preserves partial text',async()=>{
+ const c=new FakeCodex();c.interrupted=false;let cancelled=false;const result=execute(c,'test','synthetic',{isCancelled:()=>cancelled,onProgress:()=>{},pollMs:5});await tick();cancelled=true;await tick();c.emit('notification','turn/completed',{threadId:'t',turn:{status:'completed',items:[{type:'agentMessage',text:'done'}]}});assert.equal((await result).status,'succeeded');
+ const d=new FakeCodex();const lost=execute(d,'test','synthetic',{isCancelled:()=>false,onProgress:()=>{},pollMs:5});await tick();d.emit('notification','item/agentMessage/delta',{threadId:'t',delta:'keep me'});d.emit('disconnected','test disconnect');assert.deepEqual(await lost,{status:'interrupted',result:'keep me',error:'test disconnect',stopWorker:true});
+});
+test('cancelled task never starts a model turn',async()=>{
+ const c=new FakeCodex();assert.equal((await execute(c,'test','synthetic',{isCancelled:()=>true,onProgress:()=>{}})).status,'cancelled');assert.equal(c.calls.length,0);
+});
+
+import {spawn,execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+import {once} from 'node:events';
+test('killed worker releases ownership and CLI recovers partial output without replay',{timeout:15000},async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'task-crash-'));
+ const child=spawn(process.execPath,[path.resolve('dist-test/crash-worker.cjs'),root],{windowsHide:true,stdio:['ignore','ignore','ignore','ipc']});
+ try{
+  const [ready]=await once(child,'message');const exited=once(child,'exit');child.kill();await exited;
+  const {stdout}=await promisify(execFile)(process.execPath,[path.resolve('dist-test/task-cli.cjs'),'list',root],{windowsHide:true});
+  const rows=JSON.parse(stdout);assert.equal(rows[0].id,ready.id);assert.equal(rows[0].status,'interrupted');
+  const s=new TaskStore(root);try{assert.equal(s.get(ready.id)!.result,'saved before crash');assert.equal(s.claim(),undefined);}finally{s.close();}
+ }finally{if(child.exitCode===null)child.kill();}
+});
+
+import {executeMaster,parsePlan} from '../src/task-master';
+const validPlan=JSON.stringify({tasks:[{title:'Analysis',instructions:'Analyze the goal'},{title:'Review',instructions:'Review risks'}]});
+test('master validates exactly two bounded text subtasks',()=>{
+ assert.equal(parsePlan('```json\n'+validPlan+'\n```').length,2);
+ for(const bad of ['not JSON','{}','{"tasks":[]}',JSON.stringify({tasks:[{title:'a',instructions:'x'},{title:'b',instructions:'x'.repeat(6001)}]})])assert.throws(()=>parsePlan(bad));
+});
+test('master persists four ordered steps and summarizes only its child results',async()=>{
+ const s=new TaskStore(fs.mkdtempSync(path.join(os.tmpdir(),'master-success-')));const id=String(s.submit('Synthetic goal','master','master').id);s.claim();let calls=0;
+ try{
+  const r=await executeMaster(s,id,'Synthetic goal',async(prompt,progress)=>{calls++;const result=[validPlan,'analysis result','review result','final answer'][calls-1];progress(result);if(calls===4){assert.match(prompt,/analysis result/);assert.match(prompt,/review result/);}return {status:'succeeded',result,error:''};});
+  s.finish(id,r.status,r.result,r.error);assert.equal(calls,4);assert.equal(s.get(id)!.result,'final answer');assert.deepEqual(s.steps(id).map(r=>r.status),Array(4).fill('succeeded'));assert.throws(()=>s.submit('Synthetic goal','master','text'));
+ }finally{s.close();}
+});
+test('malformed master plan fails without child execution',async()=>{
+ const s=new TaskStore(fs.mkdtempSync(path.join(os.tmpdir(),'master-invalid-')));const id=String(s.submit('goal','master','master').id);s.claim();let calls=0;
+ try{const r=await executeMaster(s,id,'goal',async()=>{calls++;return {status:'succeeded',result:'not JSON',error:''};});s.finish(id,r.status,r.result,r.error);assert.equal(r.status,'failed');assert.equal(calls,1);assert.equal(s.steps(id).length,1);}finally{s.close();}
+});
+test('master cancellation stops later steps and keeps child partial result',async()=>{
+ const s=new TaskStore(fs.mkdtempSync(path.join(os.tmpdir(),'master-cancel-')));const id=String(s.submit('goal','master','master').id);s.claim();let calls=0;
+ try{const r=await executeMaster(s,id,'goal',async(_prompt,progress)=>{calls++;if(calls===1)return {status:'succeeded',result:validPlan,error:''};progress('partial child');s.cancel(id);return {status:'cancelled',result:'partial child',error:''};});s.finish(id,r.status,r.result,r.error);assert.equal(calls,2);assert.deepEqual(s.steps(id).map(r=>r.status),['succeeded','cancelled','cancelled','cancelled']);assert.equal(s.steps(id)[1].result,'partial child');}finally{s.close();}
+});
+test('failed child prevents summary; crash recovery preserves step output',async()=>{
+ const s=new TaskStore(fs.mkdtempSync(path.join(os.tmpdir(),'master-fail-')));const id=String(s.submit('goal','master','master').id);s.claim();let calls=0;
+ try{const r=await executeMaster(s,id,'goal',async()=>{calls++;return calls===1?{status:'succeeded',result:validPlan,error:''}:{status:'failed',result:'partial',error:'synthetic failure'};});s.finish(id,r.status,r.result,r.error);assert.equal(calls,2);assert.equal(s.steps(id)[1].status,'failed');assert.equal(s.steps(id)[3].status,'interrupted');
+ const next=String(s.submit('next','next','master').id);s.claim();s.addStep(next,0,'plan','prompt');s.startStep(next,0);s.stepProgress(next,0,'checkpoint');s.recover();assert.equal(s.steps(next)[0].status,'interrupted');assert.equal(s.steps(next)[0].result,'checkpoint');
+ }finally{s.close();}
+});

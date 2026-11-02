@@ -1,3 +1,7 @@
+## Unreleased — Master text workflow
+
+Experimental sequential planning, two child tasks and synthesis with saved step results and cancellation. Ordinary task close/reopen was confirmed. No installer release.
+
 # Changelog
 
 ## Unreleased — chat-switch diagnostic

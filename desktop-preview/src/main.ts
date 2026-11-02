@@ -6,6 +6,7 @@ import {pathToFileURL} from 'node:url';
 import {randomUUID} from 'node:crypto';
 import {Store,spaces,outbound} from './store';
 import {Codex,MODEL} from './codex';
+import {TaskService,requirePersonal} from './task-service';
 import type {Snapshot,Runtime,Message} from './shared';
 const smoke=process.argv.includes('--smoke-test');
 const root=smoke?fs.mkdtempSync(path.join(os.tmpdir(),'personal-agent-ui-')):path.join(app.getPath('appData'),'PersonalAgentPreview');
@@ -44,6 +45,12 @@ function handle(name:string,fn:(...args:any[])=>any){ipcMain.handle('agent:'+nam
 });}
 async function connect(){idle();runtime.error='';codex.close();runtime.version=await codex.start(store.state.codexPath);runtime.connected=true;return refresh();}
 function register(){
+ const tasks=new TaskService(root,path.join(__dirname,'tasks.cjs'));
+ handle('taskCancel',(id:string)=>{requirePersonal(store.state.space);if(typeof id!=='string'||!id||id.length>100)throw new Error('Invalid task ID');return tasks.call('cancel',[id]);});
+ handle('tasksList',()=>{requirePersonal(store.state.space);return tasks.call('list');});
+ handle('taskGet',(id:string)=>{requirePersonal(store.state.space);if(typeof id!=='string'||id.length>100)throw new Error('Invalid task ID');return tasks.call('show',[id]);});
+ handle('taskSubmit',(prompt:string,key:string,kind='text')=>{requirePersonal(store.state.space);if(typeof prompt!=='string'||!prompt.trim()||prompt.length>16000||typeof key!=='string'||!key.trim()||key.length>200)throw new Error('Invalid task');if(!['text','master'].includes(kind))throw new Error('Invalid task kind');return tasks.call(kind==='master'?'submit-master':'submit',['-',key],prompt);});
+ handle('tasksRun',()=>{requirePersonal(store.state.space);return tasks.run(store.state.codexPath);});
  handle('snapshot',snapshot);
  handle('preferences',p=>{idle();if(!p||typeof p!=='object')throw new Error('Invalid preferences');
   for(const key of Object.keys(p)){
@@ -138,7 +145,11 @@ app.whenReady().then(async()=>{
    await new Promise(r=>setTimeout(r,400));
    const dark=await win.webContents.executeJavaScript(`({theme:document.documentElement.dataset.theme,body:document.body.innerText})`);
    if(dark.theme!=='dark'||!dark.body.includes('Workbench'))throw new Error('Theme/language smoke test failed');
-   if(output){fs.writeFileSync(path.join(output,'dark.png'),(await win.webContents.capturePage()).toPNG());fs.writeFileSync(path.join(output,'result.json'),JSON.stringify({passed:true,checks:['renderer','isolated preload','language','theme','mode']}));}
+   await win.webContents.executeJavaScript(`Array.from(document.querySelectorAll('nav button')).find(b=>b.textContent==='Tasks')?.click()`);
+   await new Promise(r=>setTimeout(r,500));
+   const taskCheck=await win.webContents.executeJavaScript(`({visible:!!document.querySelector('#task-prompt'),body:document.body.innerText})`);
+   if(!taskCheck.visible||!taskCheck.body.includes('Run queue'))throw new Error('Task page smoke test failed');
+   if(output){fs.writeFileSync(path.join(output,'dark.png'),(await win.webContents.capturePage()).toPNG());fs.writeFileSync(path.join(output,'result.json'),JSON.stringify({passed:true,checks:['renderer','isolated preload','language','theme','mode','task page']}));}
    app.exit(0);
   }catch(e){console.error(e);app.exit(2);}
  }

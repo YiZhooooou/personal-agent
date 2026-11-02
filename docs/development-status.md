@@ -1,3 +1,15 @@
+## 2026-11-01 — Minimal Master workflow
+
+Owner confirmed native close/reopen test completed and saved results remained visible. Added explicit experimental Master mode: one planner, two independent text subtask calls, one summarizer; each uses a fresh Codex thread and persists its prompt/status/output. This is sequential role-based orchestration, not a general multi-agent scheduler. Four calls per workflow; three-minute bound per call. Planner output must contain exactly two bounded instructions. Invalid plans fail before child execution; child failure prevents summary; cancellation prevents later steps. Work/Lab remain blocked.
+
+Schema 2 adds task kind and ordered step records, preserving prior tasks. Parent finalization and orphan recovery update step state transactionally. Full workflow and UI regression tests pass: 29 total, plus TypeScript/build. Real synthetic Git-learning workflow completed all four steps, final answer 433 characters. Native acceptance of the new Master selector is pending. No remote push or installer release.
+
+## 2026-11-01 — Background task cancellation checkpoint
+
+Personal task UI now shows readable prompt titles, cancellation controls and explicit chat-only connection status. SQLite schema migration preserves existing tasks; streaming output is checkpointed approximately once per second. Queued cancellation prevents execution, active cancellation preserves partial output, and unexpected worker exit recovers as interrupted without replay. Timed-out cancellation stops local execution and leaves remaining tasks queued.
+
+Validation: 23 automated tests and TypeScript/build passed. Tests cover process-kill recovery, migration, cancellation/completion races, IPC space policy and UI controls. Live synthetic cancellation preserved partial output; the following queued task returned QUEUE_CONTINUES. User records and credential contents were not read for these tests. No native close/reopen acceptance for the new build, installer refresh, multi-agent scheduler or remote push. Windows + external Node 24 still required.
+
 # Active investigation — 2026-10-08
 
 Recent-chat selection reportedly blanks the window. NOT reproduced or confirmed fixed. Synthetic repeated switching with valid frozen IPC snapshots passes. Added RenderBoundary to display errors locally and built a small app.asar-only diagnostic patch (outputs/Personal-Agent-Chat-Diagnostic outside repo). Await the displayed exception; if no panel appears, investigate native renderer failure. No real message content read for testing. Nine tests and build passed separately; runner now includes both groups. No full installer built.
@@ -35,3 +47,14 @@ Build fixes: esbuild-wasm, bundled node:test, workspace Electron cache and elect
 GitHub: intended private YiZhooooou/personal-agent; not created/published. No hosted app website exists. Git setup and full roadmap remain outstanding.
 
 Next: native startup in a permitted normal Windows location, visual/IPC checks, non-sensitive account login/chat acceptance. Then resume memory/sync/skills and GitHub setup. Never sync app data or Codex credentials. This checkpoint is not a working release.
+
+Local validation update: auto-scroll effect cleanup failure reproduced with Promise-returning scrollIntoView and fixed with a void effect body. Nine tests and build pass. Diagnostic renderer includes stack traces; user desktop confirmation pending. Changes remain local.
+
+Owner desktop confirmation: screenshot of Diagnostic Check after local auto-scroll fix shows exact OK reply and a long response marked interrupted, with composer available. Manual response/render/stop path passed in this session. Scheduling and durable task recovery remain unimplemented. Changes are local, not pushed.
+
+
+Task backend checkpoint: CLI submit/run/list/show implemented, 12 tests and build pass, real synthetic task result persisted. UI/scheduler/cancel/partial checkpoint not implemented. See desktop-preview/TASKS.md.
+
+Task page checkpoint: submit/list/detail/run implemented for Personal only. 15 tests/build pass; parent-exit real-task check passed. Native UI confirmation pending; no task cancel or scheduler. Changes local.
+
+Owner task-page acceptance: screenshot confirms a submitted five-tip learning task succeeded and its persisted result displays in the UI. Native close/reopen during execution remains unconfirmed. UX follow-ups: readable task labels instead of request keys; distinguish chat connection state from independent background worker authentication.

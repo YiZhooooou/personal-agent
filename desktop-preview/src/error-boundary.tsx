@@ -5,7 +5,7 @@ import React from 'react';
 export class RenderBoundary extends React.Component<React.PropsWithChildren,{error:string|null}> {
  state:{error:string|null}={error:null};
  static getDerivedStateFromError(error:unknown){
-  return {error:(error instanceof Error?`${error.name}: ${error.message}`:String(error)).slice(0,1500)};
+  return {error:(error instanceof Error?error.stack||`${error.name}: ${error.message}`:String(error)).slice(0,6000)};
  }
  render(){
   if(this.state.error!==null)return <section className="render-failure" role="alert">

@@ -1,3 +1,7 @@
+## Local experimental checkpoint
+
+Master text workflow implemented: planner, two sequential independent assignments, summary. General multi-agent scheduling, parallelism, cross-project execution and distributable runtime packaging remain future work.
+
 # Roadmap
 
 Status: first incremental implementation approved; P1–P3 engineering preview implemented but native startup and live account acceptance remain pending. Later stages remain planned. This roadmap is not a release promise. See docs/development-status.md for evidence.

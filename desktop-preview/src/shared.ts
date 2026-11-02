@@ -6,7 +6,14 @@ export interface State {version:1; language:Language; theme:'light'|'dark'; mode
 export interface Runtime {connected:boolean; version:string; account:'chatgpt'|'none'|'unsupported'; plan:string; quota:string; busy:boolean; error:string;}
 export interface Snapshot {state:State; runtime:Runtime; dataPath:string;}
 export type Result<T> = {ok:true; value:T}|{ok:false; error:string};
+export interface TaskStep {position:number;title:string;status:string;result:string;error:string;}
+export interface TaskRecord {kind?:'text'|'master';steps?:TaskStep[];id:string;request_key:string;title?:string;status:string;created:string;updated:string;prompt?:string;result?:string;error?:string;}
 export interface Bridge {
+ tasksList():Promise<Result<TaskRecord[]>>;
+ taskGet(id:string):Promise<Result<TaskRecord>>;
+ taskCancel(id:string):Promise<Result<TaskRecord>>;
+ taskSubmit(prompt:string,key:string,kind?:'text'|'master'):Promise<Result<TaskRecord>>;
+ tasksRun():Promise<Result<boolean>>;
  snapshot():Promise<Result<Snapshot>>;
  preferences(p:Partial<Pick<State,'language'|'theme'|'mode'|'space'>>):Promise<Result<Snapshot>>;
  select(id:string):Promise<Result<Snapshot>>;
