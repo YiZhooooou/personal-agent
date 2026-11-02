@@ -13,7 +13,7 @@ export class TaskStore {
   this.db.exec('BEGIN IMMEDIATE');
   try{
    const version=Number(this.db.prepare('PRAGMA user_version').get()!.user_version);
-   if(version>4)throw new Error('Task database is newer than this application.');
+   if(version>6)throw new Error('Task database is newer than this application.');
    this.db.exec(`
    CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY, request_key TEXT UNIQUE NOT NULL, prompt TEXT NOT NULL,
    status TEXT NOT NULL, result TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT '', created TEXT NOT NULL, updated TEXT NOT NULL,
@@ -22,7 +22,7 @@ export class TaskStore {
    if(!this.db.prepare('PRAGMA table_info(tasks)').all().some(c=>c.name==='kind'))this.db.exec("ALTER TABLE tasks ADD COLUMN kind TEXT NOT NULL DEFAULT 'text'");
    this.db.exec("CREATE TABLE IF NOT EXISTS task_steps(task_id TEXT NOT NULL,position INTEGER NOT NULL,title TEXT NOT NULL,prompt TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'queued',result TEXT NOT NULL DEFAULT '',error TEXT NOT NULL DEFAULT '',PRIMARY KEY(task_id,position)); CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY,name TEXT NOT NULL,handoff TEXT NOT NULL,revision INTEGER NOT NULL DEFAULT 1);");
    if(!this.db.prepare('PRAGMA table_info(tasks)').all().some(c=>c.name==='context_json'))this.db.exec("ALTER TABLE tasks ADD COLUMN context_json TEXT NOT NULL DEFAULT '{}'");
-   this.db.exec("CREATE TABLE IF NOT EXISTS project_history(project_id TEXT NOT NULL,revision INTEGER NOT NULL,handoff TEXT NOT NULL,source TEXT NOT NULL,created TEXT NOT NULL,PRIMARY KEY(project_id,revision)); INSERT OR IGNORE INTO project_history SELECT id,revision,handoff,'Existing project snapshot',datetime('now') FROM projects; PRAGMA user_version=4; COMMIT");
+   this.db.exec("CREATE TABLE IF NOT EXISTS project_history(project_id TEXT NOT NULL,revision INTEGER NOT NULL,handoff TEXT NOT NULL,source TEXT NOT NULL,created TEXT NOT NULL,PRIMARY KEY(project_id,revision)); INSERT OR IGNORE INTO project_history SELECT id,revision,handoff,'Existing project snapshot',datetime('now') FROM projects; CREATE TABLE IF NOT EXISTS schedules(id TEXT PRIMARY KEY,project_id TEXT NOT NULL,prompt TEXT NOT NULL,at TEXT NOT NULL,enabled INTEGER NOT NULL,last_day TEXT NOT NULL); CREATE TABLE IF NOT EXISTS project_workspaces(project_id TEXT PRIMARY KEY,root TEXT NOT NULL); PRAGMA user_version=6; COMMIT");
   }catch(e){this.db.exec('ROLLBACK');this.db.close();throw e;}
  }
  submit(prompt:string,key:string,kind='text',projectId=''){
@@ -50,6 +50,54 @@ export class TaskStore {
   if(changed.changes!==1)throw new Error('Task is not running');
   this.db.prepare("UPDATE task_steps SET status=? WHERE task_id=? AND status IN ('running','queued')").run(status==='cancelled'?'cancelled':'interrupted',id);
   this.db.exec('COMMIT');
+  }catch(e){this.db.exec('ROLLBACK');throw e;}
+ }
+ setWorkspace(id:string,folder:string){
+  this.projectContext(id);if(typeof folder!=='string'||!path.isAbsolute(folder))throw new Error('Absolute project folder required');
+  const root=fs.realpathSync(folder);if(!fs.statSync(root).isDirectory())throw new Error('Project folder is not a directory');
+  this.db.prepare('INSERT INTO project_workspaces VALUES(?,?) ON CONFLICT(project_id) DO UPDATE SET root=excluded.root').run(id,root);return this.workspace(id);
+ }
+ readWorkspaceFile(id:string,name:string){
+  this.projectContext(id);
+  if(typeof name!=='string'||!name||path.basename(name)!==name||name.includes(':')||name.startsWith('.')||name.length>200)throw new Error('Choose a visible top-level text file');
+  if(!/\.(txt|md|json|ts|tsx|js|jsx|py|css|html|yml|yaml|toml|xml|csv)$/i.test(name))throw new Error('This file type is not available for text preview');
+  const row=this.db.prepare('SELECT root FROM project_workspaces WHERE project_id=?').get(id);if(!row)throw new Error('Choose a project folder first');
+  const root=String(row.root);if(fs.realpathSync(root)!==root)throw new Error('Project target changed');
+  const file=path.join(root,name);if(fs.lstatSync(file).isSymbolicLink()||path.dirname(fs.realpathSync(file))!==root)throw new Error('Linked or outside file refused');
+  const fd=fs.openSync(file,'r');try{
+   const stat=fs.fstatSync(fd);if(!stat.isFile()||stat.size>12000)throw new Error('Preview supports regular files up to 12 KB');
+   const buffer=Buffer.alloc(12001);const size=fs.readSync(fd,buffer,0,buffer.length,0);if(size>12000)throw new Error('File grew beyond preview limit');
+   const text=new TextDecoder('utf-8',{fatal:true}).decode(buffer.subarray(0,size));if(text.includes('\0'))throw new Error('Binary file refused');
+   return {name,text,bytes:size};
+  }finally{fs.closeSync(fd);}
+ }
+ clearWorkspace(id:string){this.projectContext(id);this.db.prepare('DELETE FROM project_workspaces WHERE project_id=?').run(id);return {root:'',files:[]};}
+ workspace(id:string){
+  this.projectContext(id);const row=this.db.prepare('SELECT root FROM project_workspaces WHERE project_id=?').get(id);if(!row)return {root:'',files:[]};
+  const root=String(row.root);if(fs.realpathSync(root)!==root)throw new Error('Project folder target changed; select it again');
+  const files=fs.readdirSync(root,{withFileTypes:true}).filter(e=>!e.isSymbolicLink()&&!e.name.startsWith('.')&&e.name!=='node_modules').slice(0,200).map(e=>({name:e.name,directory:e.isDirectory()}));
+  return {root,files};
+ }
+ schedules(projectId:string){this.projectContext(projectId);return this.db.prepare('SELECT * FROM schedules WHERE project_id=? ORDER BY at,id').all(projectId);}
+ addSchedule(projectId:string,prompt:string,at:string,now=new Date()){
+  this.projectContext(projectId);
+  if(typeof prompt!=='string'||!prompt.trim()||prompt.length>16000||typeof at!=='string'||!/^([01]\d|2[0-3]):[0-5]\d$/.test(at))throw new Error('Invalid schedule');
+  const id=randomUUID(),day=localDay(now),clock=localClock(now);
+  this.db.prepare('INSERT INTO schedules VALUES(?,?,?,?,1,?)').run(id,projectId,prompt,at,clock>=at?day:'');return this.schedules(projectId);
+ }
+ enableSchedule(id:string,enabled:boolean){
+  if(typeof enabled!=='boolean')throw new Error('Invalid enabled state');
+  const r=this.db.prepare('UPDATE schedules SET enabled=?,last_day=? WHERE id=?').run(enabled?1:0,localDay(new Date()),id);if(r.changes!==1)throw new Error('Schedule not found');
+ }
+ tickSchedules(now=new Date()){
+  const day=localDay(now),clock=localClock(now);const created:string[]=[];
+  this.db.exec('BEGIN IMMEDIATE');try{
+   const due=this.db.prepare('SELECT * FROM schedules WHERE enabled=1 AND at<=? AND last_day<>?').all(clock,day);
+   for(const schedule of due){
+    const task=this.submit(String(schedule.prompt),'schedule:'+schedule.id+':'+day,'text',String(schedule.project_id));
+    this.db.prepare('UPDATE schedules SET last_day=? WHERE id=?').run(day,schedule.id);created.push(String(task.id));
+   }
+   this.db.exec('COMMIT');return created;
   }catch(e){this.db.exec('ROLLBACK');throw e;}
  }
  adoptTask(id:string){
@@ -97,3 +145,6 @@ export class TaskStore {
  }
  close(){this.db.close();}
 }
+
+function localDay(d:Date){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function localClock(d:Date){return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}

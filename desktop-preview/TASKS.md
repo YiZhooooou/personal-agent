@@ -35,3 +35,11 @@ CLI: use submit-master in place of submit. Schema 2 preserves older tasks and ad
 ## Project memory runtime
 
 Run npm run build:memory on the Windows build machine with Python and PyInstaller installed, then npm run build. The resulting dist/memory-service directory must accompany tasks.cjs. Runtime uses the bundled executable only, with no Python or API fallback. Optional integration check: python test/check-memory-integration.py after building both. Explicit project memories are retrieved by keyword and frozen into submitted tasks. Empty projects work without the memory runtime; once memory exists, a missing runtime causes an explicit error. Editing/deleting memories in the UI remains pending.
+
+## Daily queue
+
+Project settings can create daily device-local HH:mm schedules. Checks happen once per minute while the app is open in Personal space, and on task list reads. Due work is queued only; the owner explicitly runs it. One request key per schedule/local date prevents duplicates across restarts. Missed days are not bulk replayed; today may be queued upon reopening. Re-enabled schedules start tomorrow. No execution while the app is closed, no OS service, no multi-device schedule sync.
+
+## Reviewed file changes
+
+A completed project task may return only JSON with name and content. The file must already exist at the registered folder top level, pass text preview validation and fit 12 KB. Review before/after, then apply through native confirmation. Raw backups live under change-proposals in local application data. Only JavaScript syntax is checked (not functional correctness). Undo refuses changed files. File replacement is staged in the same directory, with a persisted operation journal. Apply/undo reconciles interrupted operations when the current file matches the before/after snapshot; unknown conflicts require manual inspection. Preserve backups. This is not a power-loss durability or hostile-filesystem sandbox guarantee. Use a temporary project for initial acceptance.

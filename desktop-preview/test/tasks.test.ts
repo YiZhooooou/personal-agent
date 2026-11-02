@@ -141,3 +141,34 @@ test('project-scoped queue never claims another project task',()=>{
  assert.equal(s.claim(b.projectId)!.id,y.id);assert.equal(s.claim(b.projectId),undefined);assert.equal(s.get(String(x.id))!.status,'queued');assert.equal(s.list().find(t=>t.id===x.id)!.project_name,'A');assert.equal(s.claim(a.projectId)!.id,x.id);
  }finally{s.close();}
 });
+
+test('daily schedules enqueue once per device date and preserve project context',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'schedule-'));let s=new TaskStore(root);const p=s.createProject('Daily');const before=new Date(2026,10,3,9,0),due=new Date(2026,10,3,10,1);
+ s.addSchedule(p.projectId,'daily report','10:00',before);assert.deepEqual(s.tickSchedules(before),[]);assert.equal(s.tickSchedules(due).length,1);s.close();s=new TaskStore(root);
+ try{assert.deepEqual(s.tickSchedules(due),[]);assert.equal(s.list()[0].project_id,p.projectId);assert.equal(s.tickSchedules(new Date(2026,10,5,11,0)).length,1);assert.equal(s.list().length,2);const schedule=s.schedules(p.projectId)[0];s.enableSchedule(String(schedule.id),false);assert.deepEqual(s.tickSchedules(new Date(2026,10,6,11,0)),[]);assert.throws(()=>s.addSchedule(p.projectId,'x','25:00'));}finally{s.close();}
+});
+
+test('workspace registration lists local entries without leaking paths into model context',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'workspace-'));const folder=path.join(root,'repo');fs.mkdirSync(folder);fs.writeFileSync(path.join(folder,'app.ts'),'synthetic');fs.mkdirSync(path.join(folder,'.git'));fs.mkdirSync(path.join(folder,'node_modules'));
+ const s=new TaskStore(path.join(root,'data'));try{const a=s.createProject('A'),b=s.createProject('B');assert.throws(()=>s.setWorkspace(a.projectId,'relative'));assert.throws(()=>s.setWorkspace(a.projectId,path.join(folder,'app.ts')));s.setWorkspace(a.projectId,folder);assert.deepEqual(s.workspace(a.projectId).files.map(f=>f.name),['app.ts']);assert.equal(s.workspace(b.projectId).root,'');assert.ok(!JSON.stringify(s.projectContext(a.projectId)).includes(folder));s.clearWorkspace(a.projectId);assert.equal(s.workspace(a.projectId).root,'');assert.ok(fs.existsSync(path.join(folder,'app.ts')));}finally{s.close();}
+});
+
+test('workspace preview reads bounded UTF-8 text and rejects unsafe names and content',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'preview-'));const folder=path.join(root,'repo');fs.mkdirSync(folder);fs.writeFileSync(path.join(folder,'readme.md'),'synthetic preview');fs.writeFileSync(path.join(folder,'.env'),'secret');fs.writeFileSync(path.join(folder,'large.txt'),'x'.repeat(12001));fs.writeFileSync(path.join(folder,'binary.txt'),Buffer.from([0,1,2]));fs.writeFileSync(path.join(folder,'bad.txt'),Buffer.from([255]));
+ const s=new TaskStore(path.join(root,'data'));try{const p=s.createProject('Preview');s.setWorkspace(p.projectId,folder);assert.equal(s.readWorkspaceFile(p.projectId,'readme.md').text,'synthetic preview');for(const name of ['../readme.md','.env','large.txt','binary.txt','bad.txt','image.exe','x:stream.txt'])assert.throws(()=>s.readWorkspaceFile(p.projectId,name));s.clearWorkspace(p.projectId);assert.throws(()=>s.readWorkspaceFile(p.projectId,'readme.md'));}finally{s.close();}
+});
+
+import {previewChange,applyChange} from '../src/project-change';
+test('reviewed single-file change applies, checks syntax, backs up and restores without overwriting later edits',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'change-'));const folder=path.join(root,'repo');fs.mkdirSync(folder);fs.writeFileSync(path.join(folder,'app.js'),'const x = 1;\n');const s=new TaskStore(path.join(root,'data'));
+ try{const project=s.createProject('Code');s.setWorkspace(project.projectId,folder);const task=s.submit('Change x to 2','proposal','text',project.projectId);s.claim();s.finish(String(task.id),'succeeded',JSON.stringify({name:'app.js',content:'const x = 2;\n'}));const p=previewChange(s,String(task.id));assert.equal(fs.readFileSync(path.join(folder,'app.js'),'utf8'),p.before);const applied=applyChange(s,p.id);assert.equal(applied.applied,true);assert.equal(applied.check.status,'passed');assert.throws(()=>applyChange(s,p.id));fs.writeFileSync(path.join(folder,'app.js'),'const x = 3;\n');assert.throws(()=>applyChange(s,p.id,true),/changed/);fs.writeFileSync(path.join(folder,'app.js'),p.after);applyChange(s,p.id,true);assert.equal(fs.readFileSync(path.join(folder,'app.js'),'utf8'),p.before);
+ const bad=s.submit('bad','bad','text',project.projectId);s.claim();s.finish(String(bad.id),'succeeded',JSON.stringify({name:'../outside.js',content:'bad'}));assert.throws(()=>previewChange(s,String(bad.id)));
+ }finally{s.close();}
+});
+
+test('interrupted replacement is reconciled and failed syntax remains reversible',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'change-recovery-'));const folder=path.join(root,'repo');fs.mkdirSync(folder);fs.writeFileSync(path.join(folder,'app.js'),'const ok = 1;');const s=new TaskStore(path.join(root,'data'));
+ try{const project=s.createProject('Recovery');s.setWorkspace(project.projectId,folder);const task=s.submit('proposal','recover','text',project.projectId);s.claim();s.finish(String(task.id),'succeeded',JSON.stringify({name:'app.js',content:'const = broken;'}));const p=previewChange(s,String(task.id));const applied=applyChange(s,p.id);assert.equal(applied.check.status,'failed');
+ const journal=path.join(s.root,'change-proposals',p.id+'.json');const interrupted=JSON.parse(fs.readFileSync(journal,'utf8'));interrupted.state='applying';interrupted.applied=false;interrupted.used=false;fs.writeFileSync(journal,JSON.stringify(interrupted));const restored=applyChange(s,p.id,true);assert.equal(restored.state,'reverted');assert.equal(fs.readFileSync(path.join(folder,'app.js'),'utf8'),'const ok = 1;');assert.ok(restored.events.some((e:any)=>e.operation==='recovered-applied'));assert.equal(restored.check.status,'passed');
+ }finally{s.close();}
+});

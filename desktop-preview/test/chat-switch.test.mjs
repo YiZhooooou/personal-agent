@@ -84,7 +84,7 @@ test('task page submits master mode and displays persisted step results',async()
   await act(async()=>ui.root.findByProps({'aria-label':'Execution mode'}).props.onChange({target:{value:'master'}}));
   await act(async()=>ui.root.findByType('textarea').props.onChange({target:{value:'goal'}}));
   await act(async()=>ui.root.findAllByType('button').find(b=>b.children.includes('Save task')).props.onClick());
-  assert.equal(submitted,true);assert.ok(ui.root.findByType('details').findAllByType('p').some(p=>p.children.includes('child evidence')));
+  assert.equal(submitted,true);assert.ok(ui.root.findByProps({className:'task-step'}).findAllByType('p').some(p=>p.children.includes('child evidence')));
  }finally{if(ui)await act(async()=>ui.unmount());}
 });
 
