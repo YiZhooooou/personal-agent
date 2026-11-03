@@ -1,3 +1,4 @@
+import {JobRecordsStore} from './job-records';
 import path from 'node:path';
 import {watchSchedules,stopScheduler,schedulerStatus} from './task-scheduler';
 import {previewChange,applyChangeLocked,listChanges,inspectChange,adoptChange,adoptRollback} from './project-change';
@@ -8,7 +9,8 @@ import {runTasks,acquireWorker} from './task-worker';
 
 async function main(){
  const [command,root,arg,key,projectId]=process.argv.slice(2);
- if(!root||!path.isAbsolute(root)||!['watch','project','submit','submit-master','list','show','run','cancel'].includes(command))throw new Error('Usage: tasks <submit|submit-master|list|show|run|cancel> <absolute data directory> [prompt or task ID] [request key]');
+ if(!root||!path.isAbsolute(root)||!['records','watch','project','submit','submit-master','list','show','run','cancel'].includes(command))throw new Error('Usage: tasks <submit|submit-master|list|show|run|cancel> <absolute data directory> [prompt or task ID] [request key]');
+ if(command==='records'){const records=new JobRecordsStore(root);try{console.log(JSON.stringify(records.request(JSON.parse(fs.readFileSync(0,'utf8')))));}finally{records.close();}return;}
  const store=new TaskStore(root);
  try{
   if(command==='watch')await watchSchedules(root,()=>process.send?.({ready:true}));

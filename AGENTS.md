@@ -11,6 +11,8 @@ The latest user-confirmed first-release scope is the job-search workbench in doc
 - Do not access credentials to diagnose login. Do not send real user records during automated tests.
 
 ## Current code map
+
+Desktop job-search: job-records.ts handles transactional local records via task-cli.ts/TaskService; job-demo.ts remains separate sample storage; job-profile.ts handles explicit profile revisions; job-workbench.tsx and job-entry-form.tsx provide current UI. Real records default to empty; never seed samples into them. Current Master is a local summary, not live job analysis. Preserve database/profile/message provenance and Personal-only IPC policy.
 app.py: Tk UI and orchestration; legacy.py: inherited tools and frozen Tcl bootstrap; core.py: settings and local tools; memory.py: SQLite event store and context retrieval; engine.py: current API client; desktop.py: Windows integration; i18n.py: translations.
 Preserve the frozen Tcl bootstrap and existing user data. Do not translate stored user content.
 

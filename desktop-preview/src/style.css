@@ -31,3 +31,7 @@
 
 .profile-comparison{margin-top:20px;font-size:12px}.profile-comparison dl{max-height:350px;overflow:auto;background:var(--bg);padding:12px;border-radius:8px}.profile-comparison dt{font-weight:600;margin-top:12px}.profile-comparison dd{margin:6px 0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7}
 .job-page-host>.job-profile-page{height:100%;min-height:0;margin:0 auto;overflow-y:auto}
+
+.job-entry-form input,.job-detail input:not([type=checkbox]){width:100%;padding:9px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--ink)}.job-entry-form textarea,.job-progress-form textarea{padding:9px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--ink);min-height:90px;resize:vertical}.record-edit-drawer{z-index:5;width:520px}.record-long-text{white-space:pre-wrap;overflow-wrap:anywhere}.record-todo{display:flex!important;flex-direction:row!important;gap:8px;margin:12px 0;font-size:12px;align-items:flex-start!important}.record-todo small{display:block;color:var(--muted);font-size:10px;line-height:1.7}.job-feedback button{margin-left:12px}.job-entry-form h2{font-size:19px}.job-detail-drawer .job-progress-form h3{margin-top:22px}.job-entry-form .button-row{position:sticky;bottom:0;padding:12px 0;background:var(--panel)}
+
+.record-error{position:sticky;top:0;z-index:3;background:#fff0e9;color:#9a4a2c;border:1px solid #b65c37;padding:12px;border-radius:8px;font-size:12px;line-height:1.7}

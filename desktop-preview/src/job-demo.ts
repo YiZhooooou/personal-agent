@@ -4,10 +4,10 @@ import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 export const jobStages=['considering','preparing','applied','interview','closed'] as const;
 export type JobStage=typeof jobStages[number];
-export interface DemoJob{id:string;company:string;title:string;stage:JobStage;match:string;reasons:string[];next:string;evidence:string;materials:string[];history:{at:string;stage:JobStage;source:string;fromStage?:JobStage;previousEvidence?:string}[];}
-export interface DemoTodo{id:string;jobId:string;title:string;due:string;done:boolean;}
+export interface DemoJob{url?:string;applicationUrl?:string;description?:string;notes?:string;createdAt?:string;updatedAt?:string;appliedOn?:string;requestKey?:string;creationHash?:string;id:string;company:string;title:string;stage:JobStage;match:string;reasons:string[];next:string;evidence:string;materials:string[];history:{at:string;stage:JobStage;source:string;fromStage?:JobStage;previousEvidence?:string;appliedOn?:string;previousAppliedOn?:string}[];}
+export interface DemoTodo{dueDate?:string;kind?:'manual'|'followup';anchor?:string;cancelled?:boolean;resolution?:string;source?:string;id:string;jobId:string;title:string;due:string;done:boolean;}
 export interface DemoMessage{id:string;role:'user'|'assistant';text:string;jobId:string;context?:{profile?:{revision:number;confirmed:boolean;fields?:JobProfileFields};job:DemoJob|null;todos:DemoTodo[]};}
-export interface JobDemoState{version:1;demo:true;selectedId:string;jobs:DemoJob[];todos:DemoTodo[];messages:DemoMessage[];}
+export interface JobDemoState{version:1;demo:boolean;revision?:number;selectedId:string;jobs:DemoJob[];todos:DemoTodo[];messages:DemoMessage[];}
 export type DemoRequest={operation:'get'}|{operation:'select';id:string}|{operation:'stage';id:string;stage:JobStage}|{operation:'todo';id:string;done:boolean}|{operation:'message';text:string};
 export function seedDemo():JobDemoState{return {version:1,demo:true,selectedId:'northstar',jobs:[
  {id:'northstar',company:'Northstar · 示例公司',title:'Software Engineer',stage:'interview',match:'优先考虑',reasons:['示例：岗位技术方向符合目标','示例：需要进一步确认工作资格要求'],next:'确认面试时间，准备项目经历',evidence:'示例邮件：收到面试邀请（非真实邮箱）',materials:['简历 A · 示例占位，尚无文件','面试邀请 · 示例记录'],history:[]},

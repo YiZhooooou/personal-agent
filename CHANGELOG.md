@@ -1,3 +1,7 @@
+## Unreleased — local job records and follow-ups
+
+Separate real records from sample data. Add/edit jobs, record evidenced stages and application dates, generate seven-day local follow-ups, cancel old automatic follow-ups on progress updates, and manage dated todos. Transactional Node service persistence rejects stale writes and duplicate source URLs; message contexts are immutable. Fix date input compatibility, cancelled-state labels and transcript-only scrolling. 82 tests/build pass; no live email, inference, notifications or application submission.
+
 ## Unreleased — local job profile
 
 Add explicit local job profile fields, draft/confirmed state and revision-checked saving. Confirmed profile snapshots attach to new demo messages; draft fields stay excluded. Preserve previous stage/evidence in future corrections. Synthetic UI and 71 automated tests pass; no external integration or release.
