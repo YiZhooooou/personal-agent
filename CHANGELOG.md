@@ -1,3 +1,9 @@
+## Unreleased — 双语简报 / Bilingual briefs
+
+新增成对中英文系统摘要、英文查看控件和旧快照兼容显示；用户原文保留，不自动翻译或上传，历史payload不变。
+
+Add paired Chinese/English system summaries, English viewing controls and legacy-snapshot display compatibility. Preserve original user input without automatic translation/upload; historical payloads remain unchanged. 91 tests/build pass.
+
 ## Unreleased — daily local briefs
 
 Generate one immutable local brief per day after10:00 while the workbench is open; catch up today only. Store counts, bounded action snapshots, source revision/timezone and separate reading receipts; paginate history and navigate to jobs. Duplicate checks/concurrent processes do not regenerate a day. No notifications, closed-window worker, email or model integration added. 88 tests/build pass.

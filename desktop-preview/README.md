@@ -1,3 +1,9 @@
+## 双语简报 / Bilingual briefs
+
+每日简报默认同时显示中英文系统摘要，可切中文或English查看控件。旧简报的英文视图沿用原快照，不改写历史。用户录入原文不自动翻译或上传。91项测试/构建通过；原生运行、后台常驻和通知仍待处理。
+
+Daily briefs show paired Chinese/English system summaries by default, with Chinese or English viewing controls. Legacy English views use frozen snapshots without rewriting history. Original user input is neither automatically translated nor uploaded. All 91 tests/build passed; native operation, closed-window checks and notifications remain pending.
+
 ## 最新检查点：每日简报
 
 “我的岗位”中新增每日简报。工作台打开时按本机日期每分钟检查，10点后生成当天一份，错过下次打开补当天，不补多天。生成、阅读标记和未来通知投递分开；本轮不发送系统通知，也不保证关窗后运行。简报是固定快照，历史20天分页，可定位岗位；岗位聚合5MB保护不包含独立简报历史。

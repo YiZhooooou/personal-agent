@@ -1,3 +1,9 @@
+## Bilingual display update
+
+New daily snapshots store paired system-summary strings generated from the same frozen facts. Legacy snapshots derive a display-only English summary without a storage migration. UI language selection does not generate a second day, change facts or invoke translation services. Company/role/task/evidence source text remains original and is explicitly labelled; this increment is not full machine translation of user input. Ordinary chat can remain Chinese, while progress/acceptance briefings and daily system summaries include English.
+
+新增双语系统摘要共用冻结事实；历史内容仅生成英文显示，不迁移存储。语言切换不重新生成、不改事实、不调用翻译服务。录入原文保留并标注，本轮不提供原文的完整机器翻译。
+
 # Daily brief snapshot and delivery boundaries
 
 Generate deterministic summaries from saved local job facts/todos, without a model or mailbox access. A short transaction reads the current job aggregate and inserts one snapshot under a local-date primary key. Checking a day repeatedly, including from independent processes, returns the existing snapshot. Generating does not advance the job aggregate revision. A missed interval catches up today after10:00, never all missed days; clock rollback does not create earlier days than the newest stored snapshot.

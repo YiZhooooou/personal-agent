@@ -1,3 +1,13 @@
+## 2026-11-02 — 双语简报 / Bilingual briefs
+
+按用户新偏好，日常对话可中文，开发进度/验收简报与产品每日简报需有英文版。新增默认中英双语系统摘要，以及中文/英文单语查看控件。新快照一起保存中英文系统摘要，计数和源版本相同；历史快照缺少双语字段时，只根据原快照生成显示内容，不迁移或重写原payload。公司名、职位、待办和依据保留原始录入语言，不自动翻译、不上传模型；这不是用户原文的完整机器翻译功能。
+
+91项TS/React测试和构建通过，UTC+14下28项核心检查通过。新增成对摘要、冻结事实/原文保留、旧payload不改写及语言切换无额外读取的覆盖。隔离浏览器经实际TaskService/CLI检查旧简报双语与英文界面；前后同一条旧payload哈希完全一致，记录总数仍为1。未读取真实邮箱/求职资料，无云模型或翻译调用。原生启动、关闭窗口持续运行和通知仍未解决，完整分发包未更新。
+
+Ordinary conversation may remain Chinese; progress/acceptance briefings and product daily briefs now include English. The app defaults to paired system summaries and offers Chinese/English viewing controls. New snapshots store both summaries together. Legacy views derive English from frozen facts without rewriting payloads. User-entered company names, roles, tasks and evidence remain in their saved language; full automatic translation of that input is not implemented, and no data is uploaded for translation.
+
+All 91 TS/React tests and the build passed; 28 core tests also passed under UTC+14. Synthetic browser checks through the actual TaskService/CLI confirmed the legacy payload hash and row count stayed unchanged. No real mailbox, user job data or cloud model was accessed. Native startup, closed-window operation and notifications remain pending; the full distribution package was not rebuilt.
+
 ## 2026-11-02 — 每日本机简报快照
 
 新增每日简报：按本机日期10点后从已保存正式岗位/待办生成，工作台打开时每分钟检查，错过则下一次打开补生成当天一份，不追补多天。关闭窗口持续运行和Windows通知尚未实现，不把“已生成”写成“已通知”。独立daily_briefs表按日期主键在事务中去重，简报生成不改岗位全局版本，避免打断正在编辑的表单。

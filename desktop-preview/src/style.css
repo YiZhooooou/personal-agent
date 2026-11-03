@@ -37,3 +37,5 @@
 .record-error{position:sticky;top:0;z-index:3;background:#fff0e9;color:#9a4a2c;border:1px solid #b65c37;padding:12px;border-radius:8px;font-size:12px;line-height:1.7}
 
 .job-brief p{font-size:12px;line-height:1.8}.brief-controls{display:flex;flex-wrap:wrap;gap:8px}.brief-history{display:flex;flex-wrap:wrap;gap:8px;padding-top:14px}.brief-detail{border-top:1px solid var(--line);margin-top:16px;padding-top:15px;max-height:500px;overflow:auto}.brief-detail ol{padding-left:20px}.brief-detail li{padding:10px 0;border-bottom:1px solid var(--line);font-size:12px}.brief-detail li p{margin:6px 0}.brief-detail small{color:var(--muted)}.brief-detail h3{margin:0}.job-brief [role=alert]{color:#a0472a}
+
+.brief-language{display:flex;align-items:center;gap:10px;font-size:11px;color:var(--muted);margin-top:13px;flex-wrap:wrap}.brief-summary{padding:12px 14px;background:var(--bg);border:1px solid var(--line);border-radius:8px;margin:10px 0}.brief-summary h4{font-size:12px;margin:0 0 7px}.brief-summary p{margin:0;line-height:1.8}.brief-detail .job-section-title{flex-wrap:wrap}
