@@ -1,3 +1,7 @@
+## Unreleased — job-search interaction prototype
+
+Default Master + jobs/todos dashboard using explicitly synthetic local data. Selected-job context snapshots, stage correction history and todo state persist separately from old records. No live Gmail, inference, applications or notifications enabled.
+
 ## Unreleased — workbench checkpoint (2026-11-02)
 
 Projects and revisioned memory/context, daily queue observability, source-bound file tasks with reviewed Apply/Undo and execution receipts, bounded Master children, and focused project navigation. Runtime packaging and dependency refresh are engineering checks; no installer release. White-screen effect cleanup was fixed and owner real chat/cancel passed; older diagnostic entries below are historical.

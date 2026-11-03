@@ -1,3 +1,7 @@
+## 当前求职交互原型
+
+启动默认进入“求职工作台”：演示 Master、今日待办、岗位阶段与详情。只有合成数据，回复由本地规则生成；不调用 AI、不读取邮箱、不提交申请、不发送系统通知。阶段/待办/消息背景保存在独立 job-demo.json，旧聊天/项目保留。中文原型优先，完整双语尚未完成。64 项 TS/React 测试及构建通过；原生新版界面仍待验收。此前工程包不包含此原型，请用更新后的源码测试启动器。见 ../docs/job-workbench-direction.md。
+
 # Agent workbench engineering preview
 
 Current development lives on `feature/task-backend`; the Python v0.3 application and its data remain separate. The package version is intentionally unchanged during these development checkpoints. No installer release has been published.

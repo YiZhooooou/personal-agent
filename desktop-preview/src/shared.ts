@@ -1,3 +1,4 @@
+import type {DemoRequest,JobDemoState} from './job-demo';
 export type Space = 'personal'|'lab'|'work';
 export type Language = 'zh'|'en';
 export interface Message {projectContext?:unknown;id:string; role:'user'|'assistant'; text:string; status?:'streaming'|'completed'|'failed'|'interrupted';}
@@ -9,6 +10,7 @@ export type Result<T> = {ok:true; value:T}|{ok:false; error:string};
 export interface TaskStep {position:number;title:string;status:string;result:string;error:string;}
 export interface TaskRecord {project_id?:string;project_name?:string;context_json?:string;kind?:'text'|'master'|'file';steps?:TaskStep[];id:string;request_key:string;title?:string;status:string;created:string;updated:string;prompt?:string;result?:string;error?:string;}
 export interface Bridge {
+ jobDemo(request:DemoRequest):Promise<Result<JobDemoState>>;
  dismissError():Promise<Result<boolean>>;
  bindProject(chatId:string,projectId:string):Promise<Result<boolean>>;
  project(request:object):Promise<Result<any>>;

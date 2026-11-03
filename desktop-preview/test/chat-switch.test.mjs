@@ -6,8 +6,8 @@ import React from 'react';
 import {create,act} from 'react-test-renderer';
 
 // Exercise the actual renderer without opening Electron or accessing user data.
-await build({entryPoints:['src/renderer.tsx'],outfile:'dist-test/renderer-test.cjs',bundle:true,platform:'node',format:'cjs',external:['react','react-dom/client'],loader:{'.css':'empty'},plugins:[{name:'test-entry',setup(b){b.onLoad({filter:/renderer\.tsx$/},async a=>({contents:(await fs.readFile(a.path,'utf8')).replace(/^createRoot\(.*$/m,'export {App,RenderBoundary,TasksPage,ProjectContext,ProjectSelector};'),loader:'tsx'}));}}]});
-const {App,RenderBoundary,TasksPage,ProjectContext,ProjectSelector}=await import('../dist-test/renderer-test.cjs');
+await build({entryPoints:['src/renderer.tsx'],outfile:'dist-test/renderer-test.cjs',bundle:true,platform:'node',format:'cjs',external:['react','react-dom/client'],loader:{'.css':'empty'},plugins:[{name:'test-entry',setup(b){b.onLoad({filter:/renderer\.tsx$/},async a=>({contents:(await fs.readFile(a.path,'utf8')).replace(/^createRoot\(.*$/m,'export {App,RenderBoundary,TasksPage,ProjectContext,ProjectSelector,JobWorkbench};'),loader:'tsx'}));}}]});
+const {App,RenderBoundary,TasksPage,ProjectContext,ProjectSelector,JobWorkbench}=await import('../dist-test/renderer-test.cjs');
 globalThis.IS_REACT_ACT_ENVIRONMENT=true;
 globalThis.document={documentElement:{dataset:{}}};
 function frozen(value){if(value&&typeof value==='object'){Object.values(value).forEach(frozen);Object.freeze(value);}return value;}
@@ -15,7 +15,7 @@ function frozen(value){if(value&&typeof value==='object'){Object.values(value).f
 test('switching chats preserves content when scrollIntoView returns a Promise',async()=>{
  const state={version:1,language:'en',theme:'light',mode:'chat',space:'personal',active:'a',codexPath:'',chats:[{id:'a',space:'personal',title:'Chat A',draft:'draft A',messages:[]},{id:'b',space:'personal',title:'Chat B',draft:'draft B',messages:[{id:'m',role:'assistant',text:'Saved reply',status:'completed'}]}]};
  let listener; const snap=()=>frozen(structuredClone({state,runtime:{connected:false,version:'',account:'none',plan:'',quota:'unknown',busy:false,error:''},dataPath:'test-only'}));
- globalThis.window={agent:{snapshot:async()=>({ok:true,value:snap()}),onChange:fn=>{listener=fn;return()=>{};},select:async id=>{state.active=id;listener(snap());return {ok:true,value:snap()};}}};
+ globalThis.window={agent:{jobDemo:async()=>({ok:false,error:"Demo not used in legacy chat test"}),snapshot:async()=>({ok:true,value:snap()}),onChange:fn=>{listener=fn;return()=>{};},select:async id=>{state.active=id;listener(snap());return {ok:true,value:snap()};}}};
  let ui;await act(async()=>{ui=create(React.createElement(App),{createNodeMock:()=>({scrollIntoView(){return Promise.resolve();}})});});
  for(const id of ['b','a','b']){
   const button=ui.root.findByProps({className:'recents'}).findAllByType('button')[id==='a'?0:1];
@@ -143,4 +143,16 @@ test('task composition can be restored after navigating to project management',a
 test('memory search and pagination preserve access to older saved records',async()=>{
  const project={projectId:'p',name:'P',revision:1,handoff:'',source:'user'};const rows=Array.from({length:25},(_,i)=>({id:'r'+i,entity:'e'+i,data:{title:'Record '+i,body:'Convention '+i,status:'confirmed'}}));globalThis.window={agent:{project:async r=>({ok:true,value:r.operation==='list'?[{id:'p',name:'P'}]:r.operation==='get'?project:rows})}};
  let ui;try{await act(async()=>{ui=create(React.createElement(ProjectContext,{onSelect:()=>{}}));});await act(async()=>ui.root.findByProps({'aria-label':'Project'}).props.onChange({target:{value:'p'}}));await act(async()=>ui.root.findAllByType('button').find(b=>b.children.includes('记忆')).props.onClick());assert.equal(ui.root.findAllByProps({className:'memory-card'}).length,20);await act(async()=>ui.root.findAllByType('button').find(b=>b.children.includes('显示更多记忆')).props.onClick());assert.equal(ui.root.findAllByProps({className:'memory-card'}).length,25);await act(async()=>ui.root.findByProps({'aria-label':'Search memories'}).props.onChange({target:{value:'Convention 24'}}));assert.equal(ui.root.findAllByProps({className:'memory-card'}).length,1);}finally{if(ui)await act(async()=>ui.unmount());}
+});
+
+await build({entryPoints:['src/job-demo.ts'],outfile:'dist-test/job-demo.cjs',bundle:true,platform:'node',format:'cjs'});
+const {JobDemoStore}=await import('../dist-test/job-demo.cjs');
+test('job workbench selection, stage correction and todo completion update one local source of truth',async()=>{
+ const os=await import('node:os');const path=await import('node:path');const root=await fs.mkdtemp(path.join(os.tmpdir(),'job-ui-'));const demo=new JobDemoStore(root);let calls=0;globalThis.window={agent:{jobDemo:async request=>{calls++;return {ok:true,value:demo.request(request)};}}};let ui;
+ await act(async()=>{ui=create(React.createElement(JobWorkbench,{space:'personal'}),{createNodeMock:()=>({scrollIntoView(){return Promise.resolve();}})});});
+ const card=ui.root.findAllByProps({className:'job-card'}).find(c=>c.findByType('strong').children.join('').includes('Harbor'));await act(async()=>card.props.onClick());assert.match(ui.root.findByProps({className:'job-context'}).findByType('strong').children.join(''),/Harbor/);
+ await act(async()=>ui.root.findByProps({'aria-label':'更正岗位阶段'}).props.onChange({target:{value:'interview'}}));assert.equal(demo.request({operation:'get'}).jobs[1].stage,'interview');
+ await act(async()=>ui.root.findByProps({'aria-label':'完成：检查申请材料，提交前由你审核'}).props.onChange({target:{checked:true}}));assert.equal(demo.request({operation:'get'}).todos[1].done,true);
+ await act(async()=>ui.root.findByType('textarea').props.onChange({target:{value:'下一步？'}}));await act(async()=>ui.root.findByType('form').props.onSubmit({preventDefault(){}}));assert.equal(demo.request({operation:'get'}).messages.at(-2).context.job.id,'harbor');await act(async()=>ui.unmount());
+ const before=calls;await act(async()=>{ui=create(React.createElement(JobWorkbench,{space:'work'}));});assert.equal(calls,before);assert.equal(ui.root.findAllByType('textarea').length,0);await act(async()=>ui.unmount());
 });

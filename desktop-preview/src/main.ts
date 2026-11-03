@@ -4,6 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {pathToFileURL} from 'node:url';
 import {randomUUID} from 'node:crypto';
+import {JobDemoStore} from './job-demo';
 import {Store,spaces,outbound} from './store';
 import {Codex,MODEL} from './codex';
 import {attachProject} from './project-input';
@@ -46,6 +47,8 @@ function handle(name:string,fn:(...args:any[])=>any){ipcMain.handle('agent:'+nam
 });}
 async function connect(){idle();runtime.error='';codex.close();runtime.version=await codex.start(store.state.codexPath);runtime.connected=true;return refresh();}
 function register(){
+ let jobDemo:JobDemoStore|undefined;
+ handle('jobDemo',(request:unknown)=>{requirePersonal(store.state.space);jobDemo??=new JobDemoStore(root);return jobDemo.request(request);});
  const tasks=new TaskService(root,app.isPackaged?path.join(process.resourcesPath,'task-service','tasks.cjs'):path.join(__dirname,'tasks.cjs'),app.isPackaged);
  let checkingSchedules=false;
  const scheduleTimer=setInterval(()=>{if(checkingSchedules||store.state.space!=='personal')return;checkingSchedules=true;void tasks.call('list').catch(e=>{runtime.error=errorText(e);changed();}).finally(()=>{checkingSchedules=false;});},60000);
@@ -152,7 +155,7 @@ app.whenReady().then(async()=>{
    await win.webContents.executeJavaScript(`window.agent.preferences({theme:'dark',language:'en',mode:'workbench'})`);
    await new Promise(r=>setTimeout(r,400));
    const dark=await win.webContents.executeJavaScript(`({theme:document.documentElement.dataset.theme,body:document.body.innerText})`);
-   if(dark.theme!=='dark'||!dark.body.includes('Workbench'))throw new Error('Theme/language smoke test failed');
+   if(dark.theme!=='dark'||!dark.body.includes('Job search'))throw new Error('Theme/language smoke test failed');
    await win.webContents.executeJavaScript(`Array.from(document.querySelectorAll('nav button')).find(b=>b.textContent==='Tasks')?.click()`);
    await new Promise(r=>setTimeout(r,500));
    const taskCheck=await win.webContents.executeJavaScript(`({visible:!!document.querySelector('#task-prompt'),body:document.body.innerText})`);

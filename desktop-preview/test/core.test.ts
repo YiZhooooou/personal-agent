@@ -45,3 +45,14 @@ test('RPC timeout rejects and does not hang',async()=>{
  const c=new Codex('unused');c.child={stdin:{destroyed:false,write:()=>{}}} as any;
  await assert.rejects(c.request('test',{},20),/timed out/);c.child=null;
 });
+
+import {JobDemoStore} from '../src/job-demo';
+test('job demo persists independent records and binds messages to the selected job without rewriting history',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'job-demo-'));fs.writeFileSync(path.join(root,'preview-state.json'),'legacy sentinel');const demo=new JobDemoStore(root);demo.request({operation:'message',text:'下一步？'});demo.request({operation:'select',id:'harbor'});demo.request({operation:'stage',id:'harbor',stage:'interview'});demo.request({operation:'todo',id:'t2',done:true});demo.request({operation:'message',text:'准备面试'});const state=new JobDemoStore(root).request({operation:'get'});
+ assert.equal(state.selectedId,'harbor');assert.equal(state.jobs.find(j=>j.id==='harbor')!.stage,'interview');assert.equal(state.todos.find(t=>t.id==='t2')!.done,true);const sent=state.messages.filter(m=>m.role==='user');assert.equal(sent[0].context!.job!.id,'northstar');assert.equal(sent[1].context!.job!.id,'harbor');assert.equal(sent[1].context!.job!.history.length,1);assert.match(state.messages.at(-1)!.text,/非 AI 回复/);assert.equal(fs.readFileSync(path.join(root,'preview-state.json'),'utf8'),'legacy sentinel');
+ const copy=demo.request({operation:'get'});copy.jobs[0].stage='closed';assert.equal(demo.request({operation:'get'}).jobs[0].stage,'interview');
+});
+test('invalid demo writes and damaged demo data do not overwrite saved records',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'job-demo-invalid-')),demo=new JobDemoStore(root);demo.request({operation:'select',id:'harbor'});const file=path.join(root,'job-demo.json'),before=fs.readFileSync(file,'utf8');
+ for(const input of [{operation:'stage',id:'harbor',stage:'submitted-by-bot'},{operation:'todo',id:'t2',done:'yes'},{operation:'message',text:' '},{operation:'select',id:'unknown'},{operation:'reset'}])assert.throws(()=>demo.request(input));assert.equal(fs.readFileSync(file,'utf8'),before);fs.writeFileSync(file,'broken');assert.throws(()=>new JobDemoStore(root));assert.equal(fs.readFileSync(file,'utf8'),'broken');
+});
