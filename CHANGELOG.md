@@ -1,3 +1,7 @@
+## Unreleased — focused navigation and scalable job table
+
+Removed old project/task/chat/Skills navigation while preserving records and components. Added action/all views, stage counts, search, sorting, 20-row pagination, collapsible Master and a detail drawer. Synthetic 120-record browser checks and 67 tests pass. No live data integration or native acceptance claim.
+
 ## Unreleased — prototype acceptance fixes
 
 Keep Master beside the board at the native minimum width, prioritize Master in narrower stacked layouts, clear stale success on failure and provide a retry for initial demo-load errors. Synthetic browser acceptance and 65 tests pass; native smoke remains unresolved (0x80000003).

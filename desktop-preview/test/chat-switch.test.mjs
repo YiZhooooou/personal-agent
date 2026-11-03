@@ -12,18 +12,8 @@ globalThis.IS_REACT_ACT_ENVIRONMENT=true;
 globalThis.document={documentElement:{dataset:{}}};
 function frozen(value){if(value&&typeof value==='object'){Object.values(value).forEach(frozen);Object.freeze(value);}return value;}
 
-test('switching chats preserves content when scrollIntoView returns a Promise',async()=>{
- const state={version:1,language:'en',theme:'light',mode:'chat',space:'personal',active:'a',codexPath:'',chats:[{id:'a',space:'personal',title:'Chat A',draft:'draft A',messages:[]},{id:'b',space:'personal',title:'Chat B',draft:'draft B',messages:[{id:'m',role:'assistant',text:'Saved reply',status:'completed'}]}]};
- let listener; const snap=()=>frozen(structuredClone({state,runtime:{connected:false,version:'',account:'none',plan:'',quota:'unknown',busy:false,error:''},dataPath:'test-only'}));
- globalThis.window={agent:{jobDemo:async()=>({ok:false,error:"Demo not used in legacy chat test"}),snapshot:async()=>({ok:true,value:snap()}),onChange:fn=>{listener=fn;return()=>{};},select:async id=>{state.active=id;listener(snap());return {ok:true,value:snap()};}}};
- let ui;await act(async()=>{ui=create(React.createElement(App),{createNodeMock:()=>({scrollIntoView(){return Promise.resolve();}})});});
- for(const id of ['b','a','b']){
-  const button=ui.root.findByProps({className:'recents'}).findAllByType('button')[id==='a'?0:1];
-  await act(async()=>{button.props.onClick();});
-  assert.equal(ui.root.findByType('textarea').props.value,'draft '+id.toUpperCase());
-  if(id==='b')assert.equal(ui.root.findByProps({className:'message-body'}).children[0],'Saved reply');
- }
- await act(async()=>ui.unmount());
+test('main navigation only exposes job workbench and settings, retaining old chats in storage',async()=>{
+ const state={version:1,language:'en',theme:'light',mode:'chat',space:'personal',active:'a',codexPath:'',chats:[{id:'a',space:'personal',title:'Old private chat',draft:'preserved',messages:[]}]};const original=structuredClone(state);const snap=()=>({state,runtime:{connected:false,version:'',account:'none',plan:'',quota:'unknown',busy:false,error:''},dataPath:'synthetic'});globalThis.window={agent:{snapshot:async()=>({ok:true,value:snap()}),onChange:()=>()=>{},jobDemo:async()=>({ok:false,error:'Synthetic demo unavailable'})}};let ui;await act(async()=>{ui=create(React.createElement(App));});assert.equal(ui.root.findByType('nav').findAllByType('button').length,1);assert.equal(ui.root.findAllByProps({className:'recents'}).length,0);assert.equal(ui.root.findAllByProps({className:'new-chat'}).length,0);assert.deepEqual(state,original);await act(async()=>ui.unmount());
 });
 
 test('renderer exception produces a visible diagnostic instead of a blank root',async()=>{
@@ -149,8 +139,8 @@ await build({entryPoints:['src/job-demo.ts'],outfile:'dist-test/job-demo.cjs',bu
 const {JobDemoStore}=await import('../dist-test/job-demo.cjs');
 test('job workbench selection, stage correction and todo completion update one local source of truth',async()=>{
  const os=await import('node:os');const path=await import('node:path');const root=await fs.mkdtemp(path.join(os.tmpdir(),'job-ui-'));const demo=new JobDemoStore(root);let calls=0;globalThis.window={agent:{jobDemo:async request=>{calls++;return {ok:true,value:demo.request(request)};}}};let ui;
- await act(async()=>{ui=create(React.createElement(JobWorkbench,{space:'personal'}),{createNodeMock:()=>({scrollIntoView(){return Promise.resolve();}})});});
- const card=ui.root.findAllByProps({className:'job-card'}).find(c=>c.findByType('strong').children.join('').includes('Harbor'));await act(async()=>card.props.onClick());assert.match(ui.root.findByProps({className:'job-context'}).findByType('strong').children.join(''),/Harbor/);
+ await act(async()=>{ui=create(React.createElement(JobWorkbench,{space:'personal'}),{createNodeMock:()=>({focus(){},scrollIntoView(){return Promise.resolve();}})});});
+ const card=ui.root.findAllByProps({className:'job-card'}).find(c=>c.findByType('strong').children.join('').includes('Harbor'));await act(async()=>card.props.onClick({currentTarget:{isConnected:false}}));assert.match(ui.root.findByProps({className:'job-context'}).findByType('strong').children.join(''),/Harbor/);
  await act(async()=>ui.root.findByProps({'aria-label':'更正岗位阶段'}).props.onChange({target:{value:'interview'}}));assert.equal(demo.request({operation:'get'}).jobs[1].stage,'interview');
  await act(async()=>ui.root.findByProps({'aria-label':'完成：检查申请材料，提交前由你审核'}).props.onChange({target:{checked:true}}));assert.equal(demo.request({operation:'get'}).todos[1].done,true);
  await act(async()=>ui.root.findByType('textarea').props.onChange({target:{value:'下一步？'}}));await act(async()=>ui.root.findByType('form').props.onSubmit({preventDefault(){}}));assert.equal(demo.request({operation:'get'}).messages.at(-2).context.job.id,'harbor');await act(async()=>ui.unmount());
@@ -158,6 +148,10 @@ test('job workbench selection, stage correction and todo completion update one l
 });
 
 test('failed job save retains the last saved state and clears earlier success feedback',async()=>{
- const os=await import('node:os'),path=await import('node:path');const root=await fs.mkdtemp(path.join(os.tmpdir(),'job-failure-ui-')),demo=new JobDemoStore(root);let fail=false;globalThis.window={agent:{jobDemo:async request=>fail?{ok:false,error:'Synthetic save failure'}:{ok:true,value:demo.request(request)}}};let ui;await act(async()=>{ui=create(React.createElement(JobWorkbench,{space:'personal'}),{createNodeMock:()=>({scrollIntoView(){}})});});
+ const os=await import('node:os'),path=await import('node:path');const root=await fs.mkdtemp(path.join(os.tmpdir(),'job-failure-ui-')),demo=new JobDemoStore(root);let fail=false;globalThis.window={agent:{jobDemo:async request=>fail?{ok:false,error:'Synthetic save failure'}:{ok:true,value:demo.request(request)}}};let ui;await act(async()=>{ui=create(React.createElement(JobWorkbench,{space:'personal'}),{createNodeMock:()=>({focus(){},scrollIntoView(){}})});});
  const label='完成：确认面试时间并准备自我介绍';await act(async()=>ui.root.findByProps({'aria-label':label}).props.onChange({target:{checked:true}}));assert.equal(ui.root.findAllByProps({role:'status'}).length,1);fail=true;await act(async()=>ui.root.findByProps({'aria-label':label}).props.onChange({target:{checked:false}}));assert.equal(ui.root.findByProps({'aria-label':label}).props.checked,true);assert.equal(ui.root.findAllByProps({role:'status'}).length,0);assert.match(ui.root.findByProps({role:'alert'}).children.join(''),/Synthetic save failure/);fail=false;await act(async()=>ui.root.findByProps({'aria-label':label}).props.onChange({target:{checked:false}}));assert.equal(ui.root.findByProps({'aria-label':label}).props.checked,false);await act(async()=>ui.unmount());
+});
+
+test('large job table paginates, searches and preserves draft when Master is collapsed',async()=>{
+ const os=await import('node:os'),path=await import('node:path');const root=await fs.mkdtemp(path.join(os.tmpdir(),'job-scale-ui-'));const seed=new JobDemoStore(root).request({operation:'get'});const originals=structuredClone(seed.jobs);seed.jobs=Array.from({length:120},(_,i)=>({...originals[i%3],id:'scale-'+i,company:'Company '+String(i).padStart(3,'0')}));seed.selectedId='scale-0';seed.todos=[];await fs.writeFile(path.join(root,'job-demo.json'),JSON.stringify(seed));const demo=new JobDemoStore(root);globalThis.window={agent:{jobDemo:async r=>({ok:true,value:demo.request(r)})}};let ui;await act(async()=>{ui=create(React.createElement(JobWorkbench,{space:'personal'}),{createNodeMock:()=>({focus(){},scrollIntoView(){}})});});const button=text=>ui.root.findAllByType('button').find(b=>b.children.includes(text));await act(async()=>button('全部岗位 ').props.onClick());assert.equal(ui.root.findAllByProps({className:'job-card'}).length,20);await act(async()=>button('下一页').props.onClick());assert.match(ui.root.findAllByProps({className:'job-card'})[0].findByType('strong').children.join(''),/020/);await act(async()=>ui.root.findByProps({'aria-label':'搜索公司或职位'}).props.onChange({target:{value:'Company 119'}}));assert.equal(ui.root.findAllByProps({className:'job-card'}).length,1);await act(async()=>ui.root.findByType('textarea').props.onChange({target:{value:'keep draft'}}));await act(async()=>button('收起 Master').props.onClick());assert.equal(ui.root.findByProps({className:'job-master'}).props.hidden,true);await act(async()=>button('展开 Master').props.onClick());assert.equal(ui.root.findByType('textarea').props.value,'keep draft');await act(async()=>ui.unmount());
 });

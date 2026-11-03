@@ -56,3 +56,10 @@ test('invalid demo writes and damaged demo data do not overwrite saved records',
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'job-demo-invalid-')),demo=new JobDemoStore(root);demo.request({operation:'select',id:'harbor'});const file=path.join(root,'job-demo.json'),before=fs.readFileSync(file,'utf8');
  for(const input of [{operation:'stage',id:'harbor',stage:'submitted-by-bot'},{operation:'todo',id:'t2',done:'yes'},{operation:'message',text:' '},{operation:'select',id:'unknown'},{operation:'reset'}])assert.throws(()=>demo.request(input));assert.equal(fs.readFileSync(file,'utf8'),before);fs.writeFileSync(file,'broken');assert.throws(()=>new JobDemoStore(root));assert.equal(fs.readFileSync(file,'utf8'),'broken');
 });
+
+import {visibleJobs} from '../src/job-view';
+import {seedDemo} from '../src/job-demo';
+test('large job list keeps action filtering separate from stage and searches archived records',()=>{
+ const seed=seedDemo(),jobs=Array.from({length:120},(_,i)=>({...seed.jobs[i%3],id:'scale-'+i,company:'Company '+String(i).padStart(3,'0'),stage:i<100?'closed' as const:'applied' as const}));const todos=[{...seed.todos[0],jobId:'scale-101',done:false},{...seed.todos[1],jobId:'scale-5',done:false}];
+ assert.equal(visibleJobs(jobs,todos,'','all','all','company').length,120);assert.deepEqual(visibleJobs(jobs,todos,'','all','action','action').map(j=>j.id),['scale-101']);assert.equal(visibleJobs(jobs,todos,'company 005','closed','all','company')[0].id,'scale-5');assert.equal(visibleJobs(jobs,todos,'missing','all','all','stage').length,0);assert.equal(jobs[0].id,'scale-0');
+});

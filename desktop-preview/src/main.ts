@@ -156,11 +156,9 @@ app.whenReady().then(async()=>{
    await new Promise(r=>setTimeout(r,400));
    const dark=await win.webContents.executeJavaScript(`({theme:document.documentElement.dataset.theme,body:document.body.innerText})`);
    if(dark.theme!=='dark'||!dark.body.includes('Job search'))throw new Error('Theme/language smoke test failed');
-   await win.webContents.executeJavaScript(`Array.from(document.querySelectorAll('nav button')).find(b=>b.textContent==='Tasks')?.click()`);
-   await new Promise(r=>setTimeout(r,500));
-   const taskCheck=await win.webContents.executeJavaScript(`({visible:!!document.querySelector('#task-prompt'),body:document.body.innerText})`);
-   if(!taskCheck.visible||!taskCheck.body.includes('Run queue'))throw new Error('Task page smoke test failed');
-   if(output){fs.writeFileSync(path.join(output,'dark.png'),(await win.webContents.capturePage()).toPNG());fs.writeFileSync(path.join(output,'result.json'),JSON.stringify({passed:true,checks:['renderer','isolated preload','language','theme','mode','task page']}));}
+   const board=await win.webContents.executeJavaScript(`({visible:!!document.querySelector('.job-table'),oldNav:Array.from(document.querySelectorAll('nav button')).some(b=>['Projects','Tasks','Chat'].includes(b.textContent.trim()))})`);
+   if(!board.visible||board.oldNav)throw new Error('Job board/navigation smoke test failed');
+   if(output){fs.writeFileSync(path.join(output,'dark.png'),(await win.webContents.capturePage()).toPNG());fs.writeFileSync(path.join(output,'result.json'),JSON.stringify({passed:true,checks:['renderer','isolated preload','language','theme','mode','job board']}));}
    app.exit(0);
   }catch(e){console.error(e);app.exit(2);}
  }
