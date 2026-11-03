@@ -1,3 +1,4 @@
+import {JobProfileStore} from './job-profile';
 import {app,BrowserWindow,ipcMain,dialog,shell} from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -47,8 +48,10 @@ function handle(name:string,fn:(...args:any[])=>any){ipcMain.handle('agent:'+nam
 });}
 async function connect(){idle();runtime.error='';codex.close();runtime.version=await codex.start(store.state.codexPath);runtime.connected=true;return refresh();}
 function register(){
+ const profileStore=new JobProfileStore(root);
+ handle('jobProfile',(request:unknown)=>{requirePersonal(store.state.space);return profileStore.request(request);});
  let jobDemo:JobDemoStore|undefined;
- handle('jobDemo',(request:unknown)=>{requirePersonal(store.state.space);jobDemo??=new JobDemoStore(root);return jobDemo.request(request);});
+ handle('jobDemo',(request:unknown)=>{requirePersonal(store.state.space);jobDemo??=new JobDemoStore(root,()=>profileStore.request({operation:'get'}));return jobDemo.request(request);});
  const tasks=new TaskService(root,app.isPackaged?path.join(process.resourcesPath,'task-service','tasks.cjs'):path.join(__dirname,'tasks.cjs'),app.isPackaged);
  let checkingSchedules=false;
  const scheduleTimer=setInterval(()=>{if(checkingSchedules||store.state.space!=='personal')return;checkingSchedules=true;void tasks.call('list').catch(e=>{runtime.error=errorText(e);changed();}).finally(()=>{checkingSchedules=false;});},60000);

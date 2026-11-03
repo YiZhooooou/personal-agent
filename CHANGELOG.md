@@ -1,3 +1,7 @@
+## Unreleased — local job profile
+
+Add explicit local job profile fields, draft/confirmed state and revision-checked saving. Confirmed profile snapshots attach to new demo messages; draft fields stay excluded. Preserve previous stage/evidence in future corrections. Synthetic UI and 71 automated tests pass; no external integration or release.
+
 ## Unreleased — focused navigation and scalable job table
 
 Removed old project/task/chat/Skills navigation while preserving records and components. Added action/all views, stage counts, search, sorting, 20-row pagination, collapsible Master and a detail drawer. Synthetic 120-record browser checks and 67 tests pass. No live data integration or native acceptance claim.
