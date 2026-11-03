@@ -53,6 +53,7 @@ function register(){
  let jobDemo:JobDemoStore|undefined;
  handle('jobDemo',(request:unknown)=>{requirePersonal(store.state.space);jobDemo??=new JobDemoStore(root,()=>profileStore.request({operation:'get'}));return jobDemo.request(request);});
  const tasks=new TaskService(root,app.isPackaged?path.join(process.resourcesPath,'task-service','tasks.cjs'):path.join(__dirname,'tasks.cjs'),app.isPackaged);
+ handle('jobBrief',(request:unknown)=>{requirePersonal(store.state.space);if(!request||typeof request!=='object'||JSON.stringify(request).length>1000)throw new Error('Invalid brief request');return tasks.call('brief',[],JSON.stringify(request));});
  handle('jobRecords',(request:unknown)=>{requirePersonal(store.state.space);if(!request||typeof request!=='object'||JSON.stringify(request).length>60000)throw new Error('Invalid job records request');return tasks.call('records',[],JSON.stringify(request));});
  // Legacy window-driven code-task scheduling is paused in the job-search UI.
  handle('bindProject',async(id:string,projectId:string)=>{idle();requirePersonal(store.state.space);if(typeof projectId!=='string')throw new Error('Invalid project');const chat=store.chat(id);if(chat.messages.length&&String(chat.projectId||'')!==projectId)throw new Error('Start a new conversation to change projects');if(projectId)await tasks.call('project',[],JSON.stringify({operation:'get',id:projectId}));store.chat(id).projectId=projectId;store.save();changed();return true;});

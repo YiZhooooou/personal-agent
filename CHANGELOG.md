@@ -1,3 +1,7 @@
+## Unreleased — daily local briefs
+
+Generate one immutable local brief per day after10:00 while the workbench is open; catch up today only. Store counts, bounded action snapshots, source revision/timezone and separate reading receipts; paginate history and navigate to jobs. Duplicate checks/concurrent processes do not regenerate a day. No notifications, closed-window worker, email or model integration added. 88 tests/build pass.
+
 ## Unreleased — local job records and follow-ups
 
 Separate real records from sample data. Add/edit jobs, record evidenced stages and application dates, generate seven-day local follow-ups, cancel old automatic follow-ups on progress updates, and manage dated todos. Transactional Node service persistence rejects stale writes and duplicate source URLs; message contexts are immutable. Fix date input compatibility, cancelled-state labels and transcript-only scrolling. 82 tests/build pass; no live email, inference, notifications or application submission.

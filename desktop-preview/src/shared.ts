@@ -1,3 +1,4 @@
+import type {BriefRequest,BriefResponse} from './job-brief';
 import type {JobRequest} from './job-records';
 import type {JobProfile,ProfileRequest} from './job-profile';
 import type {DemoRequest,JobDemoState} from './job-demo';
@@ -12,6 +13,7 @@ export type Result<T> = {ok:true; value:T}|{ok:false; error:string};
 export interface TaskStep {position:number;title:string;status:string;result:string;error:string;}
 export interface TaskRecord {project_id?:string;project_name?:string;context_json?:string;kind?:'text'|'master'|'file';steps?:TaskStep[];id:string;request_key:string;title?:string;status:string;created:string;updated:string;prompt?:string;result?:string;error?:string;}
 export interface Bridge {
+ jobBrief(request:BriefRequest):Promise<Result<BriefResponse>>;
  jobRecords(request:JobRequest):Promise<Result<JobDemoState>>;
  jobProfile(request:ProfileRequest):Promise<Result<JobProfile>>;
  jobDemo(request:DemoRequest):Promise<Result<JobDemoState>>;

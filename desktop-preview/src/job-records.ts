@@ -1,3 +1,5 @@
+import {buildDailyBrief} from './job-brief';
+import type {BriefRequest,BriefResponse,BriefMeta,DailyBrief} from './job-brief';
 import {DatabaseSync} from 'node:sqlite';
 import fs from 'node:fs';import path from 'node:path';import {randomUUID,createHash} from 'node:crypto';
 import type {DemoJob,DemoTodo,JobDemoState,JobStage,DemoRequest} from './job-demo';
@@ -16,6 +18,20 @@ export class JobRecordsStore{
  constructor(private root:string){fs.mkdirSync(root,{recursive:true});this.db=new DatabaseSync(path.join(root,'job-records.sqlite3'));this.db.exec('PRAGMA busy_timeout=5000');if(!this.db.prepare("SELECT 1 FROM sqlite_master WHERE name='job_state'").get())this.db.exec('CREATE TABLE IF NOT EXISTS job_state(singleton INTEGER PRIMARY KEY CHECK(singleton=1),payload TEXT NOT NULL)');}
  close(){this.db.close();}
  private read():JobDemoState{const row=this.db.prepare('SELECT payload FROM job_state WHERE singleton=1').get();if(!row)return empty();const s=JSON.parse(String(row.payload));if(s.version!==1||s.demo!==false||!Number.isSafeInteger(s.revision)||!Array.isArray(s.jobs)||!Array.isArray(s.todos)||!Array.isArray(s.messages))throw new Error('岗位数据库格式无法读取，原记录未修改');return s;}
+ briefing(input:unknown,now=new Date()):BriefResponse{
+  if(!input||typeof input!=='object')throw new Error('Invalid brief request');const r=input as BriefRequest,today=localDay(now);
+  if(!['check','list','read'].includes(r.operation))throw new Error('Unsupported brief operation');
+  if(!this.db.prepare("SELECT 1 FROM sqlite_master WHERE name='daily_briefs'").get())this.db.exec('CREATE TABLE IF NOT EXISTS daily_briefs(day TEXT PRIMARY KEY,payload TEXT NOT NULL,seen_at TEXT)');
+  const metadata=(row:Record<string,unknown>):BriefMeta=>{const brief=JSON.parse(String(row.payload)) as DailyBrief;return {day:brief.day,createdAt:brief.createdAt,seenAt:row.seen_at?String(row.seen_at):null,counts:brief.counts};};
+  if(r.operation==='list'){if(r.before!==undefined&&!validDay(r.before))throw new Error('Invalid history cursor');const rows=this.db.prepare('SELECT payload,seen_at FROM daily_briefs WHERE (? IS NULL OR day<?) ORDER BY day DESC LIMIT 21').all(r.before??null,r.before??null);const history=rows.slice(0,20).map(metadata);return {status:'history',today,history,...(rows.length>20?{nextBefore:history.at(-1)!.day}:{})};}
+  this.db.exec('BEGIN IMMEDIATE');try{
+   if(r.operation==='read'){if(!validDay(r.day))throw new Error('Invalid brief date');const row=this.db.prepare('SELECT payload,seen_at FROM daily_briefs WHERE day=?').get(r.day);if(!row)throw new Error('这一天没有已生成的简报');const seenAt=row.seen_at?String(row.seen_at):now.toISOString();this.db.prepare('UPDATE daily_briefs SET seen_at=? WHERE day=?').run(seenAt,r.day);const brief=JSON.parse(String(row.payload)) as DailyBrief;this.db.exec('COMMIT');return {status:'read',today,brief,meta:{...metadata(row),seenAt}};}
+   const existing=this.db.prepare('SELECT payload,seen_at FROM daily_briefs WHERE day=?').get(today);if(existing){this.db.exec('COMMIT');return {status:'existing',today,meta:metadata(existing)};}
+   const newest=this.db.prepare('SELECT day FROM daily_briefs ORDER BY day DESC LIMIT 1').get();if(newest&&String(newest.day)>today){this.db.exec('COMMIT');return {status:'clock-blocked',today};}
+   if(now.getHours()<10){this.db.exec('COMMIT');return {status:'scheduled',today};}
+   const brief=buildDailyBrief(this.read(),now);this.db.prepare('INSERT INTO daily_briefs(day,payload,seen_at) VALUES(?,?,NULL)').run(today,JSON.stringify(brief));this.db.exec('COMMIT');return {status:'created',today,meta:{day:today,createdAt:brief.createdAt,seenAt:null,counts:brief.counts}};
+  }catch(e){this.db.exec('ROLLBACK');throw e;}
+ }
  request(input:unknown,now=new Date()):JobDemoState{
   if(!input||typeof input!=='object')throw new Error('Invalid job request');const r=input as JobRequest;if(r.operation==='get')return this.read();
   this.db.exec('BEGIN IMMEDIATE');try{const state=this.read();let clean:NewJobFields|undefined;
