@@ -188,3 +188,12 @@ Detached daily queue supervisor: explicit Personal UI start/stop/status controls
 Owner screenshot exposed stale project revision after task adoption: history had v3 while editor held v2, disabling restore of v2. History now refreshes current project before computing restore controls and refuses to discard unsaved edits. Regression added; 49 tests/build passed.
 
 Database contention fix after owner screenshot: configure busy_timeout before operations, skip WAL/schema writes on already-current databases, and avoid recovery write transactions when no interrupted tasks exist. Regression holds a write transaction in one process and verifies another process reads saved data within 3 seconds. 50 TS tests/build passed. Task service strips SQLite warning boilerplate from actionable errors and gives a clear busy message. Owner desktop retest pending.
+
+
+## 2026-11-02 — Background daily briefs / 后台每日简报
+
+新增独立后台简报进程及启动、停止、状态控制。使用独占进程锁、独立停止标记和心跳；不运行旧任务，不读取邮件或调用模型。仍遵循本机 10:00、错过仅补当天和每日快照去重规则。状态每十秒刷新。停止后台不禁用打开窗口时的检查。
+
+Added an independently owned detached brief worker with explicit start/stop/status controls, a separate stop marker and heartbeat. It never runs legacy tasks, reads email or calls AI. Existing local 10:00, today-only catch-up and snapshot deduplication rules remain. UI status refreshes every ten seconds. Stopping the worker does not disable open-window checks.
+
+Validation: 95 tests and production build passed. New checks cover exclusive ownership, repeated starts, stop/restart, corrupt/stale/future heartbeats, actual detached CLI lifecycle and UI command routing. All test workers stopped. Native Electron close-window UI acceptance remains pending because the existing native startup failure is unresolved. No Windows notifications, startup registration, crash auto-restart or sleep/offline execution.

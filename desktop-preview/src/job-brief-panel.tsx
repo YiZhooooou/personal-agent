@@ -1,8 +1,11 @@
+import type {BriefWorkerStatus} from './job-brief-worker';
 import React,{useEffect,useRef,useState} from 'react';
 import {briefSummaries} from './job-brief';
 import type {BriefRequest,BriefResponse,BriefMeta,DailyBrief} from './job-brief';
 export function JobBriefPanel({enabled,onSelect,disabled=false}:{enabled:boolean;disabled?:boolean;onSelect:(id:string)=>void}){
  const [status,setStatus]=useState<BriefResponse|null>(null),[brief,setBrief]=useState<DailyBrief|null>(null),[history,setHistory]=useState<BriefMeta[]>([]),[historyOpen,setHistoryOpen]=useState(false),[next,setNext]=useState<string|undefined>(),[error,setError]=useState(''),[pending,setPending]=useState(false),[language,setLanguage]=useState('both');
+ const [worker,setWorker]=useState<BriefWorkerStatus|null>(null),[workerPending,setWorkerPending]=useState(false);
+ async function workerAction(operation:'start'|'stop'|'status'){if(!window.agent.jobBriefWorker)return;setWorkerPending(true);try{const r=await window.agent.jobBriefWorker(operation);if(!r.ok)throw new Error(r.error);if(active.current){setWorker(r.value);setError('');}}catch(e){if(active.current)setError(String(e));}finally{if(active.current)setWorkerPending(false);}}
  const inFlight=useRef(false),active=useRef(enabled);
  async function run(request:BriefRequest){
   if(inFlight.current||!active.current)return;inFlight.current=true;setPending(true);
@@ -12,7 +15,7 @@ export function JobBriefPanel({enabled,onSelect,disabled=false}:{enabled:boolean
    else setStatus(r.value);
   }catch(e){if(active.current)setError(String(e));}finally{inFlight.current=false;if(active.current)setPending(false);}
  }
- useEffect(()=>{active.current=enabled;if(!enabled){setPending(false);return;}void run({operation:'check'});const timer=setInterval(()=>void run({operation:'check'}),60000);return()=>{active.current=false;clearInterval(timer);};},[enabled]);
+ useEffect(()=>{active.current=enabled;if(!enabled){setPending(false);return;}void run({operation:'check'});void workerAction('status');const timer=setInterval(()=>void run({operation:'check'}),60000);const workerTimer=setInterval(()=>void workerAction('status'),10000);return()=>{active.current=false;clearInterval(timer);clearInterval(workerTimer);};},[enabled]);
  if(!enabled)return null;
  const t=(zh:string,en:string)=>language==='en'?en:zh;
  const today=status?.meta,counts=today?.counts,summaries=brief?briefSummaries(brief):null;
@@ -20,6 +23,11 @@ export function JobBriefPanel({enabled,onSelect,disabled=false}:{enabled:boolean
  return <section className="job-brief" lang={language==='en'?'en':undefined}>
   <div className="job-section-title"><h2>{t('每日简报','Daily brief')}</h2><span>{t('本机规则汇总 · 未发送通知','Local rule-based summary · No notification sent')}</span></div>
   <label className="brief-language">简报语言 / Brief language <select aria-label="简报语言 / Brief language" value={language} onChange={e=>setLanguage(e.target.value)}><option value="both">中英双语 / Both</option><option value="zh">中文</option><option value="en">English</option></select></label>
+  <details><summary>{t('后台简报','Background briefs')} · {worker?.state||'—'}</summary>
+   <p>{t('启动后关闭窗口仍会检查；电脑需保持开机。重启电脑后需重新启动。不读取邮件、不调用模型、不发送通知。','Once started, checks continue after this window closes. The computer must stay on. Start again after a system restart. No email, AI calls or notifications.')}</p>
+   <div className="brief-controls">{(['start','stop','status'] as const).map((op,i)=><button key={op} disabled={disabled||workerPending} onClick={()=>void workerAction(op)}>{[t('启动后台简报','Start background briefs'),t('停止后台简报','Stop background briefs'),t('刷新后台状态','Refresh background status')][i]}</button>)}</div>
+   {worker?.lastCheck&&<p>{t('最近检查','Last check')}: {worker.lastCheck} · {worker.result}</p>}{worker?.error&&<p role="alert">{worker.error}</p>}
+  </details>
   {error&&<p role="alert">{t('读取失败，原始错误：','Unable to load. Original error: ')}{error}</p>}
   {!status&&!error&&<p>{t('正在检查今日简报…',"Checking today's brief…")}</p>}
   {status?.status==='scheduled'&&<p>{t('今天 10:00 后生成；错过后下次打开补生成当天一份.','Generated after 10:00 local time. If missed, reopening generates one brief for today only.')}</p>}

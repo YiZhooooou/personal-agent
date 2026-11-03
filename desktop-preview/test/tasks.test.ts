@@ -244,3 +244,37 @@ test('credential filenames and obvious credential contents are blocked before fi
 test('model proposals cannot introduce obvious credentials into registered files',()=>{
  assert.throws(()=>parseFileProposal(JSON.stringify({name:'app.js',content:'const config = {refresh_token: "synthetic-token"};'}),'app.js'),/credentials/);
 });
+import {briefWorkerStatus,stopBriefWorker,watchBriefs} from '../src/job-brief-worker';
+import {TaskService} from '../src/task-service';
+
+test('brief worker owns a separate lease, supports duplicate start and cooperative restart',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'brief-watch-'));
+ let ready!:()=>void;const started=new Promise<void>(r=>ready=r);
+ const running=watchBriefs(root,ready,20);await started;
+ try{
+  const pid=briefWorkerStatus(root).pid;assert.equal(briefWorkerStatus(root).state,'running');
+  await watchBriefs(root,()=>{},20);assert.equal(briefWorkerStatus(root).pid,pid);
+  assert.equal(fs.existsSync(path.join(root,'tasks.sqlite3')),false);
+  assert.equal(stopBriefWorker(root).state,'stopping');
+ }finally{stopBriefWorker(root);await running;}
+ assert.equal(briefWorkerStatus(root).state,'stopped');
+ let readyAgain!:()=>void;const nextReady=new Promise<void>(r=>readyAgain=r);const next=watchBriefs(root,readyAgain,20);await nextReady;
+ try{assert.equal(briefWorkerStatus(root).state,'running');}finally{stopBriefWorker(root);await next;}
+});
+
+test('brief status rejects stale and future heartbeats without reporting a live worker',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'brief-heartbeat-'));const file=path.join(root,'brief-worker-status.json');
+ for(const heartbeat of [Date.now()-30000,Date.now()+30000]){fs.writeFileSync(file,JSON.stringify({state:'running',heartbeat}));assert.equal(briefWorkerStatus(root).state,'interrupted');}
+ fs.writeFileSync(file,'bad json');assert.equal(briefWorkerStatus(root).state,'interrupted');
+});
+
+test('production brief CLI detaches, checks and stops without touching legacy tasks',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'brief-detached-'));const service=new TaskService(root,path.resolve('dist-test/task-cli.cjs'));
+ const wait=async(predicate:()=>boolean)=>{const end=Date.now()+12000;while(!predicate()){if(Date.now()>end)throw new Error('Worker did not reach expected state');await new Promise(r=>setTimeout(r,50));}};
+ try{
+  await service.run('','','brief-watch');await wait(()=>!!briefWorkerStatus(root).lastCheck);
+  const first=briefWorkerStatus(root);assert.equal(first.state,'running');
+  await service.run('','','brief-watch');assert.equal(briefWorkerStatus(root).pid,first.pid);
+  assert.equal(fs.existsSync(path.join(root,'tasks.sqlite3')),false);
+ }finally{stopBriefWorker(root);await wait(()=>briefWorkerStatus(root).state==='stopped');}
+});

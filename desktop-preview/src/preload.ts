@@ -2,6 +2,7 @@ import {contextBridge,ipcRenderer} from 'electron';
 import type {Bridge,Snapshot} from './shared';
 const invoke=(name:string,...args:unknown[])=>ipcRenderer.invoke('agent:'+name,...args);
 const bridge:Bridge={
+ jobBriefWorker:operation=>invoke('jobBriefWorker',operation),
  jobBrief:request=>invoke('jobBrief',request),
  jobRecords:request=>invoke('jobRecords',request),
  jobProfile:request=>invoke('jobProfile',request),

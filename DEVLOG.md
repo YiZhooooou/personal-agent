@@ -213,3 +213,12 @@ Added explicit execution and rollback handoffs, sourced from actual proposal sta
 Master now plans 1–3 independent text children, choosing the smallest useful count; summary has its own persisted step and a bounded aggregate input. Maximum five calls; simple tasks still default to the single-call mode. Added copy-to-draft to recover task instructions without automatically retrying model requests.
 
 Memory deletion now has a native confirmation identifying the record; global error dismissal actually clears the displayed runtime error. Scheduling prepares memory context before acquiring its write transaction to reduce contention. 58 TS tests/build passed at this checkpoint; final regression and packaging checks recorded later. Native UI and first-class file-task acceptance grouped for owner review.
+
+
+## 2026-11-02 — Background daily briefs / 后台每日简报
+
+新增独立后台简报进程及启动、停止、状态控制。使用独占进程锁、独立停止标记和心跳；不运行旧任务，不读取邮件或调用模型。仍遵循本机 10:00、错过仅补当天和每日快照去重规则。状态每十秒刷新。停止后台不禁用打开窗口时的检查。
+
+Added an independently owned detached brief worker with explicit start/stop/status controls, a separate stop marker and heartbeat. It never runs legacy tasks, reads email or calls AI. Existing local 10:00, today-only catch-up and snapshot deduplication rules remain. UI status refreshes every ten seconds. Stopping the worker does not disable open-window checks.
+
+Validation: 95 tests and production build passed. New checks cover exclusive ownership, repeated starts, stop/restart, corrupt/stale/future heartbeats, actual detached CLI lifecycle and UI command routing. All test workers stopped. Native Electron close-window UI acceptance remains pending because the existing native startup failure is unresolved. No Windows notifications, startup registration, crash auto-restart or sleep/offline execution.
