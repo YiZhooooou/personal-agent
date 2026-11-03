@@ -3,11 +3,11 @@ import type {DemoRequest,JobDemoState,JobStage} from './job-demo';
 const labels:Record<JobStage,string>={considering:'待考虑',preparing:'准备中',applied:'已投递',interview:'面试',closed:'结束'};
 export function JobWorkbench({space}:{space:string}){
  const [data,setData]=useState<JobDemoState|null>(null),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[draft,setDraft]=useState(''),[filter,setFilter]=useState('all');const bottom=useRef<HTMLDivElement>(null);
- async function act(request:DemoRequest){setBusy(true);setError('');try{const r=await window.agent.jobDemo(request);if(!r.ok)throw new Error(r.error);setData(r.value);if(request.operation==='message')setDraft('');if(request.operation==='stage')setNotice('示例阶段已更正并保存；没有提交真实申请。');else if(request.operation==='todo')setNotice('待办状态已保存。');else setNotice('');}catch(e){setError(String(e));}finally{setBusy(false);}}
+ async function act(request:DemoRequest){setBusy(true);setError('');setNotice('');try{const r=await window.agent.jobDemo(request);if(!r.ok)throw new Error(r.error);setData(r.value);if(request.operation==='message')setDraft('');if(request.operation==='stage')setNotice('示例阶段已更正并保存；没有提交真实申请。');else if(request.operation==='todo')setNotice('待办状态已保存。');else setNotice('');}catch(e){setError(String(e));}finally{setBusy(false);}}
  useEffect(()=>{if(space!=='personal')return;let live=true;void window.agent.jobDemo({operation:'get'}).then(r=>{if(live){if(r.ok)setData(r.value);else setError(r.error);}}).catch(e=>{if(live)setError(String(e));});return()=>{live=false;};},[space]);
  useEffect(()=>{bottom.current?.scrollIntoView({block:'nearest'});},[data?.messages.length]);
  if(space!=='personal')return <div className="settings-page"><h1>求职工作台</h1><p>演示只在个人空间提供。工作空间不读取或发送求职资料。</p></div>;
- if(!data)return <div className="settings-page"><h1>求职工作台</h1><p role="status">{error||'载入本地演示…'}</p></div>;
+ if(!data)return <div className="settings-page"><h1>求职工作台</h1><p role={error?'alert':'status'}>{error||'载入本地演示…'}</p>{error&&<button disabled={busy} onClick={()=>void act({operation:'get'})}>重新载入演示</button>}</div>;
  const selected=data.jobs.find(j=>j.id===data.selectedId)!;const todos=data.todos.filter(t=>!t.done);
  return <div className="job-workspace"><div className="job-intro"><div><span className="eyebrow">求职工作台 · 交互原型</span><h1>今天，推进下一步。</h1></div><span className="job-demo-badge">示例数据 · Gmail 未连接 · 不投递</span></div>
  {error&&<div role="alert" className="job-feedback">{error}</div>}{notice&&<div role="status" className="job-feedback">{notice}</div>}

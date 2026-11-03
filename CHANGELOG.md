@@ -1,3 +1,7 @@
+## Unreleased — prototype acceptance fixes
+
+Keep Master beside the board at the native minimum width, prioritize Master in narrower stacked layouts, clear stale success on failure and provide a retry for initial demo-load errors. Synthetic browser acceptance and 65 tests pass; native smoke remains unresolved (0x80000003).
+
 ## Unreleased — job-search interaction prototype
 
 Default Master + jobs/todos dashboard using explicitly synthetic local data. Selected-job context snapshots, stage correction history and todo state persist separately from old records. No live Gmail, inference, applications or notifications enabled.
