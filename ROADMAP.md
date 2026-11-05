@@ -1,8 +1,8 @@
 ## Current checkpoint — 2026-11-04 / 当前进度
 
-求职主线：审核导入旧岗位、状态不明核对、可追溯的跟进改期/取消/恢复、岗位清单导出和紧凑首页。后台简报已支持显式启动与停止，电脑需运行；通知、Gmail、真实 Master 推理仍待接通。当前原型有岗位聚合 5MB 上限和会话数量限制，不能声称长期规模化完成。下一步先验证后台恢复与集中原生验收，再接只读 Gmail 和受控真实推理。
+求职主线：审核导入旧岗位、状态不明核对、可追溯的跟进改期/取消/恢复、岗位清单导出和紧凑首页。后台简报已支持显式启动与停止，电脑需运行；通知、Gmail、真实 Master 推理仍待接通。当前原型有岗位聚合 5MB 上限和会话数量限制，不能声称长期规模化完成。后台恢复已通过隔离进程验证；下一步集中原生验收，再接只读 Gmail 和受控真实推理。
 
-Current job-search work: reviewed imports, uncertain-record review, auditable follow-up changes, portable job lists and a compact dashboard. Brief workers have explicit start/stop controls while the computer runs. Notifications, Gmail and real Master inference remain pending. The prototype still has a 5MB aggregate and bounded conversation history; long-term scalability is not complete. Next: background recovery and grouped native acceptance, followed by read-only Gmail and controlled inference.
+Current job-search work: reviewed imports, uncertain-record review, auditable follow-up changes, portable job lists and a compact dashboard. Brief workers have explicit start/stop controls while the computer runs. Notifications, Gmail and real Master inference remain pending. The prototype still has a 5MB aggregate and bounded conversation history; long-term scalability is not complete. Background recovery now has isolated-process coverage. Next: grouped native acceptance, followed by read-only Gmail and controlled inference.
 
 Earlier entries below are historical evidence, not current capability claims.
 

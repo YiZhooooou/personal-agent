@@ -2,17 +2,21 @@ import type {DemoJob,DemoTodo} from './job-demo';
 import {jobText} from './job-fields';
 import {validDay} from './job-dates';
 export type TodoAction='reschedule'|'cancel'|'restore';
-export function recordTodoChange(todo:DemoTodo,action:TodoAction,reason:string,now:Date,dueDate=todo.dueDate||''){
+export function recordTodoChange(todo:DemoTodo,action:TodoAction|'complete'|'reopen',reason:string,now:Date,dueDate=todo.dueDate||''){
  todo.changes??=[];todo.changes.push({at:now.toISOString(),action,reason,previousDueDate:todo.dueDate||'',dueDate});
+}
+export function todoRestoreBlock(todo:DemoTodo,job:DemoJob):string{
+  if(todo.superseded||['进度记录已更新，旧跟进安排已取消','已记录新的进度依据，旧核对任务已取消'].includes(todo.resolution||''))return '旧待办已被新进度替代，请创建新的待办 / This task was superseded; create a new task';
+  if(!todo.cancelled||job.stage==='closed')return '此待办不能恢复 / This task cannot be restored';
+  if(todo.kind==='followup'&&(job.stage!=='applied'||job.appliedOn!==todo.anchor))return '旧跟进已被新进度替代，请创建新的待办 / This follow-up was superseded; create a new task';
+  if(todo.kind==='review'&&!job.needsReview)return '此核对事项已解决，请创建新的待办 / This review was resolved; create a new task';
+ return '';
 }
 export function reviseTodo(todo:DemoTodo,job:DemoJob,action:TodoAction,date:unknown,basis:unknown,now:Date){
  const reason=jobText(basis,1000,true);
  if(!['reschedule','cancel','restore'].includes(action))throw new Error('Unsupported todo action');
  if(action==='restore'){
-  if(todo.superseded||['进度记录已更新，旧跟进安排已取消','已记录新的进度依据，旧核对任务已取消'].includes(todo.resolution||''))throw new Error('旧待办已被新进度替代，请创建新的待办 / This task was superseded; create a new task');
-  if(!todo.cancelled||job.stage==='closed')throw new Error('此待办不能恢复 / This task cannot be restored');
-  if(todo.kind==='followup'&&(job.stage!=='applied'||job.appliedOn!==todo.anchor))throw new Error('旧跟进已被新进度替代，请创建新的待办 / This follow-up was superseded; create a new task');
-  if(todo.kind==='review'&&!job.needsReview)throw new Error('此核对事项已解决，请创建新的待办 / This review was resolved; create a new task');
+  const blocked=todoRestoreBlock(todo,job);if(blocked)throw new Error(blocked);
   recordTodoChange(todo,action,reason,now);todo.cancelled=false;todo.resolution=reason;return;
  }
  if(todo.cancelled||todo.done)throw new Error('请先恢复或重新打开待办 / Restore or reopen this task first');

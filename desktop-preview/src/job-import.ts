@@ -21,6 +21,7 @@ export function prepareJobImport(raw:unknown,source:unknown,state:JobDemoState,n
    if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('每条记录必须是对象 / Each row must be an object');
    const v=value as Record<string,unknown>,allowed=['company','title','url','applicationUrl','description','notes','nextAction','stage','appliedOn','evidence'];
    if(Object.keys(v).some(key=>!allowed.includes(key)))throw new Error('含未知字段，请参考格式示例 / Unknown field; check the format example');
+   row.company=jobText(v.company,200,true);row.title=jobText(v.title,200,true);
    const base=fieldsOf(Object.fromEntries(allowed.slice(0,7).map(key=>[key,v[key]??''])));row.company=base.company;row.title=base.title;
    const reportedStage=jobText(v.stage??'unknown',30)||'unknown',stage=({'待考虑':'considering','准备中':'preparing','已投递':'applied','面试':'interview','结束':'closed','状态不明':'unknown'} as Record<string,string>)[reportedStage]||reportedStage.toLowerCase(),day=jobText(v.appliedOn??'',10),evidence=jobText(v.evidence??'',2000);
    if(stage!=='unknown'&&!jobStages.includes(stage as any))throw new Error('阶段需为 considering/preparing/applied/interview/closed/unknown');

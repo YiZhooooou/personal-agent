@@ -244,7 +244,7 @@ test('credential filenames and obvious credential contents are blocked before fi
 test('model proposals cannot introduce obvious credentials into registered files',()=>{
  assert.throws(()=>parseFileProposal(JSON.stringify({name:'app.js',content:'const config = {refresh_token: "synthetic-token"};'}),'app.js'),/credentials/);
 });
-import {briefWorkerStatus,stopBriefWorker,watchBriefs} from '../src/job-brief-worker';
+import {briefWorkerStatus,stopBriefWorker,watchBriefs,writeBriefWorkerStatus} from '../src/job-brief-worker';
 import {TaskService} from '../src/task-service';
 
 test('brief worker owns a separate lease, supports duplicate start and cooperative restart',async()=>{
@@ -264,13 +264,13 @@ test('brief worker owns a separate lease, supports duplicate start and cooperati
 
 test('brief status rejects stale and future heartbeats without reporting a live worker',()=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'brief-heartbeat-'));const file=path.join(root,'brief-worker-status.json');
- for(const heartbeat of [Date.now()-30000,Date.now()+30000]){fs.writeFileSync(file,JSON.stringify({state:'running',heartbeat}));assert.equal(briefWorkerStatus(root).state,'interrupted');}
+ for(const heartbeat of [Date.now()-30000,Date.now()+30000]){fs.writeFileSync(file,JSON.stringify({state:'running',heartbeat,pid:123}));assert.equal(briefWorkerStatus(root).state,'interrupted');}
  fs.writeFileSync(file,'bad json');assert.equal(briefWorkerStatus(root).state,'interrupted');
 });
 
 test('production brief CLI detaches, checks and stops without touching legacy tasks',async()=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'brief-detached-'));const service=new TaskService(root,path.resolve('dist-test/task-cli.cjs'));
- const wait=async(predicate:()=>boolean)=>{const end=Date.now()+12000;while(!predicate()){if(Date.now()>end)throw new Error('Worker did not reach expected state');await new Promise(r=>setTimeout(r,50));}};
+ const wait=async(predicate:()=>boolean)=>{const end=Date.now()+12000;while(!predicate()){if(Date.now()>end)throw new Error('Worker did not reach expected state: '+JSON.stringify(briefWorkerStatus(root))+' · '+(fs.existsSync(path.join(root,'background-worker.log'))?fs.readFileSync(path.join(root,'background-worker.log'),'utf8').slice(-1000):'No worker log'));await new Promise(r=>setTimeout(r,50));}};
  try{
   await service.run('','','brief-watch');await wait(()=>!!briefWorkerStatus(root).lastCheck);
   const first=briefWorkerStatus(root);assert.equal(first.state,'running');
@@ -284,4 +284,32 @@ test('production CLI previews and atomically imports 200 synthetic rows; concurr
  const preview=await service.call('import-preview',[],JSON.stringify({raw,source:'Synthetic bulk test'}));assert.equal(preview.rows.length,200);assert.equal(preview.rows.filter((r:any)=>r.status==='review').length,40);
  const input={operation:'import-jobs',raw,source:'Synthetic bulk test',selected:Array.from({length:200},(_,i)=>i+1),revision:0};
  const outcomes=await Promise.allSettled(['bulk-1','bulk-2'].map(key=>service.call('records',[],JSON.stringify({...input,key}))));assert.equal(outcomes.filter(r=>r.status==='fulfilled').length,1);const saved=await service.call('records',[],JSON.stringify({operation:'get'}));assert.equal(saved.jobs.length,200);assert.equal(saved.todos.length,80);assert.equal(saved.revision,1);assert.equal(saved.jobs.filter((j:any)=>j.needsReview).length,40);assert.equal(fs.existsSync(path.join(root,'tasks.sqlite3')),false);
+});
+test('brief worker survives launching-parent exit, reports a crash and restarts under a new owner',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'brief-parent-exit-')),service=new TaskService(root,path.resolve('dist-test/task-cli.cjs'));let livePid:number|undefined;
+ const wait=async(predicate:()=>boolean,limit=12000)=>{const end=Date.now()+limit;while(!predicate()){if(Date.now()>end)throw new Error('Background lifecycle timed out');await new Promise(r=>setTimeout(r,100));}};
+ try{
+  const {stdout}=await promisify(execFile)(process.execPath,[path.resolve('dist-test/brief-parent.cjs'),root],{windowsHide:true,timeout:10000,encoding:'utf8'});assert.match(stdout,/BRIEF_PARENT_EXITING/);
+  let status=await service.call('brief-status');livePid=status.pid;assert.ok(livePid&&livePid!==process.pid);await wait(()=>!!briefWorkerStatus(root).lastCheck);const first=briefWorkerStatus(root).lastCheck;await wait(()=>{const next=briefWorkerStatus(root);return next.state==='running'&&!!next.lastCheck&&next.lastCheck!==first;});
+  try{process.kill(livePid!);}catch(error){throw new Error('Owned worker crash check failed: '+String(error)+'; status='+JSON.stringify(briefWorkerStatus(root))+'; log='+fs.readFileSync(path.join(root,'background-worker.log'),'utf8').slice(-2000));}livePid=undefined;await wait(()=>briefWorkerStatus(root).state==='interrupted',25000);
+  const crashed=briefWorkerStatus(root).pid;await service.run('','','brief-watch');status=await service.call('brief-status');livePid=status.pid;assert.equal(status.state,'running',JSON.stringify(status));assert.notEqual(livePid,crashed);await wait(()=>!!briefWorkerStatus(root).lastCheck);
+  assert.equal(fs.existsSync(path.join(root,'tasks.sqlite3')),false);
+ }finally{if(livePid){stopBriefWorker(root);await wait(()=>briefWorkerStatus(root).state==='stopped');}}
+});
+test('fresh but malformed brief status never reports a running worker',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'brief-bad-status-')),file=path.join(root,'brief-worker-status.json');
+ for(const value of [{state:'invented',heartbeat:Date.now(),pid:123},{state:'running',heartbeat:Date.now(),pid:-1},{state:'running',heartbeat:String(Date.now()),pid:123},{state:'running',heartbeat:Date.now(),pid:123,error:{bad:'object'}}]){fs.writeFileSync(file,JSON.stringify(value));assert.equal(briefWorkerStatus(root).state,'interrupted');}
+});
+test('detached workers can emit diagnostics after their launching parent exits',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'worker-late-log-'));
+ await promisify(execFile)(process.execPath,[path.resolve('dist-test/brief-parent.cjs'),root,'dist-test/late-stderr-worker.cjs'],{windowsHide:true,timeout:10000});
+ const marker=path.join(root,'late-worker-completed'),end=Date.now()+5000;while(!fs.existsSync(marker)){if(Date.now()>end)throw new Error('Worker could not complete after parent exit');await new Promise(r=>setTimeout(r,50));}
+ assert.match(fs.readFileSync(path.join(root,'background-worker.log'),'utf8'),/Synthetic diagnostic after launching parent exited/);
+});
+test('brief status replacement retries transient Windows locks without exposing partial JSON',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'brief-status-lock-')),file=path.join(root,'brief-worker-status.json');fs.writeFileSync(file,JSON.stringify({state:'stopped',heartbeat:1}));let attempts=0;
+ await writeBriefWorkerStatus(root,{state:'running',heartbeat:Date.now(),pid:123},(from,to)=>{attempts++;if(attempts<=3){assert.equal(JSON.parse(fs.readFileSync(file,'utf8')).state,'stopped');throw Object.assign(new Error('Synthetic Windows sharing violation'),{code:'EPERM'});}fs.renameSync(from,to);});
+ assert.equal(attempts,4);assert.equal(briefWorkerStatus(root).state,'running');assert.equal(fs.readdirSync(root).filter(name=>name.endsWith('.tmp')).length,0);
+ let permanentAttempts=0;await assert.rejects(writeBriefWorkerStatus(root,{state:'stopped',heartbeat:Date.now()},()=>{permanentAttempts++;throw Object.assign(new Error('No disk space'),{code:'ENOSPC'});}),/No disk space/);assert.equal(permanentAttempts,1);assert.equal(briefWorkerStatus(root).state,'running');assert.equal(fs.readdirSync(root).filter(name=>name.endsWith('.tmp')).length,0);
+ let lockedAttempts=0;await assert.rejects(writeBriefWorkerStatus(root,{state:'stopped',heartbeat:Date.now()},()=>{lockedAttempts++;throw Object.assign(new Error('Still locked'),{code:'EACCES'});}),/Still locked/);assert.equal(lockedAttempts,21);assert.equal(briefWorkerStatus(root).state,'running');assert.equal(fs.readdirSync(root).filter(name=>name.endsWith('.tmp')).length,0);
 });

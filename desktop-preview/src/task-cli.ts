@@ -1,4 +1,4 @@
-import {watchBriefs,briefWorkerStatus,stopBriefWorker} from './job-brief-worker';
+import {watchBriefs,readBriefWorkerStatus,stopBriefWorker} from './job-brief-worker';
 import {JobRecordsStore} from './job-records';
 import path from 'node:path';
 import {watchSchedules,stopScheduler,schedulerStatus} from './task-scheduler';
@@ -13,7 +13,7 @@ async function main(){
  if(!root||!path.isAbsolute(root)||!['import-preview','brief-watch','brief-status','brief-stop','brief','records','watch','project','submit','submit-master','list','show','run','cancel'].includes(command))throw new Error('Usage: tasks <submit|submit-master|list|show|run|cancel> <absolute data directory> [prompt or task ID] [request key]');
  if(command==='import-preview'){const store=new JobRecordsStore(root);try{const r=JSON.parse(fs.readFileSync(0,'utf8'));console.log(JSON.stringify(store.previewImport(r.raw,r.source)));}finally{store.close();}return;}
  if(command==='brief-watch'){await watchBriefs(root,()=>process.send?.({ready:true}));return;}
- if(command==='brief-status'||command==='brief-stop'){console.log(JSON.stringify(command==='brief-stop'?stopBriefWorker(root):briefWorkerStatus(root)));return;}
+ if(command==='brief-status'||command==='brief-stop'){if(command==='brief-stop')stopBriefWorker(root);console.log(JSON.stringify(await readBriefWorkerStatus(root)));return;}
  if(command==='records'||command==='brief'){const records=new JobRecordsStore(root);try{console.log(JSON.stringify((command==='brief'?records.briefing(JSON.parse(fs.readFileSync(0,'utf8'))):records.request(JSON.parse(fs.readFileSync(0,'utf8'))))));}finally{records.close();}return;}
  const store=new TaskStore(root);
  try{

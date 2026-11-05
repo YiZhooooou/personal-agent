@@ -24,6 +24,7 @@ export function JobBriefPanel({enabled,onSelect,disabled=false}:{enabled:boolean
  useEffect(()=>{active.current=enabled;if(!enabled){setPending(false);return;}void run({operation:'check'});void workerAction('status',true);const timer=setInterval(()=>void run({operation:'check'}),60000);const workerTimer=setInterval(()=>void workerAction('status',true),10000);return()=>{active.current=false;clearInterval(timer);clearInterval(workerTimer);};},[enabled]);
  if(!enabled)return null;
  const t=(zh:string,en:string)=>language==='en'?en:zh;
+ const workerLabels={running:t('运行中','Running'),stopping:t('正在停止','Stopping'),stopped:t('已停止','Stopped'),interrupted:t('连接中断，请检查或重新启动','Interrupted; check or restart')};
  const today=status?.meta,counts=today?.counts,summaries=brief?briefSummaries(brief):null;
  const buckets={overdue:t('逾期','Overdue'),today:t('今天','Today'),soon:t('未来两天','Next two days'),undated:t('待安排','Unscheduled')};
  return <section className="job-brief" lang={language==='en'?'en':undefined}>
@@ -41,7 +42,7 @@ export function JobBriefPanel({enabled,onSelect,disabled=false}:{enabled:boolean
   </div>
   <details className="brief-options"><summary>{t('简报语言与后台设置','Brief language and background settings')}</summary>
   <label className="brief-language">简报语言 / Brief language <select aria-label="简报语言 / Brief language" value={language} onChange={e=>setLanguage(e.target.value)}><option value="both">中英双语 / Both</option><option value="zh">中文</option><option value="en">English</option></select></label>
-  <details><summary>{t('后台简报','Background briefs')} · {worker?.state||'—'}</summary>
+  <details><summary>{t('后台简报','Background briefs')} · {worker?workerLabels[worker.state]:'—'}</summary>
    <p>{t('启动后关闭窗口仍会检查；电脑需保持开机。重启电脑后需重新启动。不读取邮件、不调用模型、不发送通知。','Once started, checks continue after this window closes. The computer must stay on. Start again after a system restart. No email, AI calls or notifications.')}</p>
    <div className="brief-controls">{(['start','stop','status'] as const).map((op,i)=><button key={op} disabled={disabled||workerPending} onClick={()=>void workerAction(op)}>{[t('启动后台简报','Start background briefs'),t('停止后台简报','Stop background briefs'),t('刷新后台状态','Refresh background status')][i]}</button>)}</div>
    {worker?.lastCheck&&<p>{t('最近检查','Last check')}: {worker.lastCheck} · {worker.result}</p>}{worker?.error&&<p role="alert">{worker.error}</p>}
