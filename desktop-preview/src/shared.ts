@@ -1,3 +1,4 @@
+import type {ImportPreview} from './job-import';
 import type {BriefWorkerStatus} from './job-brief-worker';
 import type {BriefRequest,BriefResponse} from './job-brief';
 import type {JobRequest} from './job-records';
@@ -14,6 +15,8 @@ export type Result<T> = {ok:true; value:T}|{ok:false; error:string};
 export interface TaskStep {position:number;title:string;status:string;result:string;error:string;}
 export interface TaskRecord {project_id?:string;project_name?:string;context_json?:string;kind?:'text'|'master'|'file';steps?:TaskStep[];id:string;request_key:string;title?:string;status:string;created:string;updated:string;prompt?:string;result?:string;error?:string;}
 export interface Bridge {
+ jobExport():Promise<Result<{saved:boolean;count:number}>>;
+ jobImportPreview(raw:string,source:string):Promise<Result<ImportPreview>>;
  jobBriefWorker(operation:'start'|'stop'|'status'):Promise<Result<BriefWorkerStatus>>;
  jobBrief(request:BriefRequest):Promise<Result<BriefResponse>>;
  jobRecords(request:JobRequest):Promise<Result<JobDemoState>>;

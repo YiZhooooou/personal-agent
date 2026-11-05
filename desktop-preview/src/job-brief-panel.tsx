@@ -4,8 +4,14 @@ import {briefSummaries} from './job-brief';
 import type {BriefRequest,BriefResponse,BriefMeta,DailyBrief} from './job-brief';
 export function JobBriefPanel({enabled,onSelect,disabled=false}:{enabled:boolean;disabled?:boolean;onSelect:(id:string)=>void}){
  const [status,setStatus]=useState<BriefResponse|null>(null),[brief,setBrief]=useState<DailyBrief|null>(null),[history,setHistory]=useState<BriefMeta[]>([]),[historyOpen,setHistoryOpen]=useState(false),[next,setNext]=useState<string|undefined>(),[error,setError]=useState(''),[pending,setPending]=useState(false),[language,setLanguage]=useState('both');
- const [worker,setWorker]=useState<BriefWorkerStatus|null>(null),[workerPending,setWorkerPending]=useState(false);
- async function workerAction(operation:'start'|'stop'|'status'){if(!window.agent.jobBriefWorker)return;setWorkerPending(true);try{const r=await window.agent.jobBriefWorker(operation);if(!r.ok)throw new Error(r.error);if(active.current){setWorker(r.value);setError('');}}catch(e){if(active.current)setError(String(e));}finally{if(active.current)setWorkerPending(false);}}
+ const [worker,setWorker]=useState<BriefWorkerStatus|null>(null),[workerPending,setWorkerPending]=useState(false),[workerError,setWorkerError]=useState('');
+ const workerInFlight=useRef(false);
+ async function workerAction(operation:'start'|'stop'|'status',automatic=false){
+  if(!window.agent.jobBriefWorker||workerInFlight.current)return;workerInFlight.current=true;setWorkerPending(true);
+  try{const r=await window.agent.jobBriefWorker(operation);if(!r.ok)throw new Error(r.error);if(active.current){setWorker(r.value);if(!automatic)setWorkerError('');}}
+  catch(e){if(active.current)setWorkerError(String(e));}finally{workerInFlight.current=false;if(active.current)setWorkerPending(false);}
+ }
+
  const inFlight=useRef(false),active=useRef(enabled);
  async function run(request:BriefRequest){
   if(inFlight.current||!active.current)return;inFlight.current=true;setPending(true);
@@ -15,19 +21,14 @@ export function JobBriefPanel({enabled,onSelect,disabled=false}:{enabled:boolean
    else setStatus(r.value);
   }catch(e){if(active.current)setError(String(e));}finally{inFlight.current=false;if(active.current)setPending(false);}
  }
- useEffect(()=>{active.current=enabled;if(!enabled){setPending(false);return;}void run({operation:'check'});void workerAction('status');const timer=setInterval(()=>void run({operation:'check'}),60000);const workerTimer=setInterval(()=>void workerAction('status'),10000);return()=>{active.current=false;clearInterval(timer);clearInterval(workerTimer);};},[enabled]);
+ useEffect(()=>{active.current=enabled;if(!enabled){setPending(false);return;}void run({operation:'check'});void workerAction('status',true);const timer=setInterval(()=>void run({operation:'check'}),60000);const workerTimer=setInterval(()=>void workerAction('status',true),10000);return()=>{active.current=false;clearInterval(timer);clearInterval(workerTimer);};},[enabled]);
  if(!enabled)return null;
  const t=(zh:string,en:string)=>language==='en'?en:zh;
  const today=status?.meta,counts=today?.counts,summaries=brief?briefSummaries(brief):null;
  const buckets={overdue:t('逾期','Overdue'),today:t('今天','Today'),soon:t('未来两天','Next two days'),undated:t('待安排','Unscheduled')};
  return <section className="job-brief" lang={language==='en'?'en':undefined}>
   <div className="job-section-title"><h2>{t('每日简报','Daily brief')}</h2><span>{t('本机规则汇总 · 未发送通知','Local rule-based summary · No notification sent')}</span></div>
-  <label className="brief-language">简报语言 / Brief language <select aria-label="简报语言 / Brief language" value={language} onChange={e=>setLanguage(e.target.value)}><option value="both">中英双语 / Both</option><option value="zh">中文</option><option value="en">English</option></select></label>
-  <details><summary>{t('后台简报','Background briefs')} · {worker?.state||'—'}</summary>
-   <p>{t('启动后关闭窗口仍会检查；电脑需保持开机。重启电脑后需重新启动。不读取邮件、不调用模型、不发送通知。','Once started, checks continue after this window closes. The computer must stay on. Start again after a system restart. No email, AI calls or notifications.')}</p>
-   <div className="brief-controls">{(['start','stop','status'] as const).map((op,i)=><button key={op} disabled={disabled||workerPending} onClick={()=>void workerAction(op)}>{[t('启动后台简报','Start background briefs'),t('停止后台简报','Stop background briefs'),t('刷新后台状态','Refresh background status')][i]}</button>)}</div>
-   {worker?.lastCheck&&<p>{t('最近检查','Last check')}: {worker.lastCheck} · {worker.result}</p>}{worker?.error&&<p role="alert">{worker.error}</p>}
-  </details>
+  {workerError&&<p role="alert">{t('后台简报：','Background briefs: ')}{workerError}</p>}
   {error&&<p role="alert">{t('读取失败，原始错误：','Unable to load. Original error: ')}{error}</p>}
   {!status&&!error&&<p>{t('正在检查今日简报…',"Checking today's brief…")}</p>}
   {status?.status==='scheduled'&&<p>{t('今天 10:00 后生成；错过后下次打开补生成当天一份.','Generated after 10:00 local time. If missed, reopening generates one brief for today only.')}</p>}
@@ -38,6 +39,14 @@ export function JobBriefPanel({enabled,onSelect,disabled=false}:{enabled:boolean
    <button disabled={pending||disabled} onClick={()=>void run({operation:'check'})}>{t('检查今日简报',"Check today's brief")}</button>
    <button disabled={pending||disabled} onClick={()=>void run({operation:'list'})}>{t('简报历史','Brief history')}</button>
   </div>
+  <details className="brief-options"><summary>{t('简报语言与后台设置','Brief language and background settings')}</summary>
+  <label className="brief-language">简报语言 / Brief language <select aria-label="简报语言 / Brief language" value={language} onChange={e=>setLanguage(e.target.value)}><option value="both">中英双语 / Both</option><option value="zh">中文</option><option value="en">English</option></select></label>
+  <details><summary>{t('后台简报','Background briefs')} · {worker?.state||'—'}</summary>
+   <p>{t('启动后关闭窗口仍会检查；电脑需保持开机。重启电脑后需重新启动。不读取邮件、不调用模型、不发送通知。','Once started, checks continue after this window closes. The computer must stay on. Start again after a system restart. No email, AI calls or notifications.')}</p>
+   <div className="brief-controls">{(['start','stop','status'] as const).map((op,i)=><button key={op} disabled={disabled||workerPending} onClick={()=>void workerAction(op)}>{[t('启动后台简报','Start background briefs'),t('停止后台简报','Stop background briefs'),t('刷新后台状态','Refresh background status')][i]}</button>)}</div>
+   {worker?.lastCheck&&<p>{t('最近检查','Last check')}: {worker.lastCheck} · {worker.result}</p>}{worker?.error&&<p role="alert">{worker.error}</p>}
+  </details>
+  </details>
   {historyOpen&&<div className="brief-history"><button onClick={()=>setHistoryOpen(false)}>{t('收起历史','Hide history')}</button>
    {!history.length&&<p>{t('暂无已生成简报.','No briefs have been generated yet.')}</p>}
    {history.map(m=><button key={m.day} disabled={pending||disabled} onClick={()=>void run({operation:'read',day:m.day})}>{m.day} · {m.counts.total} {t('项行动',m.counts.total===1?'action':'actions')} · {m.seenAt?t('已查看','Read'):t('未查看','Unread')}</button>)}

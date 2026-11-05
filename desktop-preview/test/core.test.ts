@@ -132,3 +132,89 @@ test('new brief saves paired summaries from the same counts and preserves user t
 test('English view of legacy brief is derived from its frozen facts without rewriting the saved payload',()=>{
  const f=recordFixture();try{f.store.briefing({operation:'check'},new Date(2026,10,2,10));const db=new (require('node:sqlite').DatabaseSync)(path.join(f.root,'job-records.sqlite3'));try{const original=JSON.parse(String(db.prepare('SELECT payload FROM daily_briefs').get().payload));delete original.summary;const raw=JSON.stringify(original);db.prepare('UPDATE daily_briefs SET payload=?').run(raw);const read=f.store.briefing({operation:'read',day:'2026-11-02'},new Date(2026,10,2,11));assert.equal(read.brief!.summary,undefined);const summaries=briefSummaries(read.brief!);assert.match(summaries.en,/Job-search brief for 2026-11-02/);assert.match(summaries.en,/revision 0/);assert.equal(db.prepare('SELECT payload FROM daily_briefs').get().payload,raw);assert.equal(f.read().revision,0);assert.equal(f.store.briefing({operation:'list'}).history!.length,1);}finally{db.close();}}finally{f.store.close();}
 });
+import type {JobRequest} from '../src/job-records';
+import {prepareJobImport} from '../src/job-import';
+
+test('import preview separates duplicate URLs, uncertain progress, similar names and invalid rows without writing',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'job-import-'));const store=new JobRecordsStore(root),now=new Date(2026,10,4,12);
+ try{const before=store.request({operation:'get'});const raw=JSON.stringify([
+  {company:'A',title:'Engineer',url:'https://example.invalid/a?utm_source=x',stage:'applied',appliedOn:'2026-11-01',evidence:'User says submitted'},
+  {company:'A',title:'Engineer',url:'https://example.invalid/a',stage:'considering'},
+  {company:'B',title:'Engineer',stage:'applied'},
+  {company:'A',title:'Engineer',url:'https://example.invalid/b',stage:'considering'},
+  {company:'C',title:'Engineer',url:'javascript:alert(1)'},
+  {company:'D',title:'Engineer',stage:'applied',appliedOn:'2026-11-10',evidence:'Unverified future date'},
+  {company:'E',title:'Engineer',surprise:'unknown field'}]);
+  const preview=store.previewImport(raw,'Synthetic notes',now);assert.deepEqual(preview.rows.map(r=>r.status),['ready','duplicate','review','review','error','review','error']);
+  assert.equal(preview.rows[2].fields!.stage,'considering');assert.equal(preview.rows[5].reportedAppliedOn,'2026-11-10');assert.equal(preview.rows[0].fields!.url,'https://example.invalid/a');assert.deepEqual(store.request({operation:'get'}),before);
+  assert.throws(()=>prepareJobImport('not json','x',before));assert.throws(()=>prepareJobImport(JSON.stringify(Array(201).fill({company:'x',title:'y'})),'x',before));
+ }finally{store.close();}
+});
+
+test('reviewed import commits selected rows atomically, preserves source and deduplicates lost-response retry',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'job-import-save-')),now=new Date(2026,10,4,12);let store=new JobRecordsStore(root);
+ const raw=JSON.stringify([{company:'A',title:'Engineer',stage:'applied',appliedOn:'2026-11-01',evidence:'I submitted',url:'https://example.invalid/a'},{company:'B',title:'Engineer',stage:'unknown',nextAction:'Check history'},{company:'C',title:'Engineer',stage:'interview',evidence:'Interview invitation'}]);
+ const req:JobRequest={operation:'import-jobs',raw,source:'Synthetic old chat',key:'batch-1',selected:[1,2],revision:0};
+ try{const saved=store.request(req,now);assert.equal(saved.jobs.length,2);assert.equal(saved.jobs[0].stage,'applied');assert.equal(saved.jobs[0].needsReview,false);assert.equal(saved.jobs[1].needsReview,true);assert.equal(saved.jobs[1].importSource!.reportedStage,'unknown');assert.equal(saved.jobs[1].importSource!.source,'Synthetic old chat');assert.equal(saved.todos.filter(t=>t.kind==='followup').length,1);assert.equal(saved.todos.find(t=>t.kind==='followup')!.dueDate,'2026-11-08');assert.equal(saved.revision,1);assert.deepEqual(store.request(req,now),JSON.parse(JSON.stringify(saved)));
+  assert.throws(()=>store.request({...req,selected:[3]},now),/Import key reused/);
+  assert.throws(()=>store.request({...req,key:'batch-2',selected:[3]},now),/已有更新/);
+  assert.equal(store.request({operation:'get'}).jobs.length,2);
+  const changed=store.request({operation:'progress',id:saved.jobs[1].id,stage:'preparing',appliedOn:'',evidence:'Reviewed the old record',revision:1},now);assert.equal(changed.jobs[1].needsReview,false);assert.equal(changed.jobs[1].importSource!.reportedStage,'unknown');
+  store.close();store=new JobRecordsStore(root);assert.equal(store.request({operation:'get'}).jobs.length,2);assert.equal(store.request(req,now).revision,2);
+ }finally{store.close();}
+});
+
+test('invalid selections and collisions roll back the entire import; existing records are never overwritten',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'job-import-rollback-')),store=new JobRecordsStore(root),raw=JSON.stringify([{company:'A',title:'Engineer',url:'https://example.invalid/a'},{company:'A again',title:'Engineer',url:'https://example.invalid/a'},{company:'',title:'bad'}]);
+ try{for(const selected of [[1,2],[1,3],[1,1],[0],[]])assert.throws(()=>store.request({operation:'import-jobs',raw,source:'x',key:'retry',selected,revision:0}));assert.equal(store.request({operation:'get'}).jobs.length,0);
+  const saved=store.request({operation:'import-jobs',raw,source:'x',key:'retry',selected:[1],revision:0});assert.equal(saved.jobs.length,1);
+  const p=store.previewImport(JSON.stringify([{company:'Replacement',title:'Different',applicationUrl:'https://example.invalid/a'}]),'x');assert.equal(p.rows[0].status,'review');assert.equal(store.request({operation:'get'}).jobs[0].company,'A');
+ }finally{store.close();}
+});
+import {parseImportList} from '../src/job-import-table';
+test('spreadsheet imports preserve quoted evidence and reject malformed headers and dates',()=>{
+ const parsed=parseImportList('\ufeff公司\t职位\t阶段\t依据\nExample\tEngineer\t面试\t"邀请含换行\n第二行"') as any[];assert.equal(parsed.length,1);assert.equal(parsed[0].evidence,'邀请含换行\n第二行');
+ const csv=parseImportList('company,title,stage,evidence\r\n"A, Inc.",Engineer,interview,"She said ""hello"""\r\n') as any[];assert.equal(csv[0].company,'A, Inc.');assert.equal(csv[0].evidence,'She said "hello"');
+ for(const bad of ['company,title,unknown\nA,B,C','company,title,title\nA,B,C','company,title\n"unclosed,B','company,title\nA,B,C','company,title\nA,"B"oops'])assert.throws(()=>parseImportList(bad));
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'import-table-')),store=new JobRecordsStore(root);try{const p=store.previewImport('公司\t职位\t阶段\t投递日期\t依据\nA\tEngineer\t已投递\t2026-10-01\tI submitted','Synthetic table',new Date(2026,10,4,12));assert.equal(p.rows[0].status,'ready');assert.equal(p.rows[0].fields!.stage,'applied');assert.equal(p.rows[0].reportedStage,'已投递');assert.equal(store.previewImport('company,title,stage,appliedOn,evidence\nA,Engineer,applied,10/01/2026,Submitted','x').rows[0].status,'error');}finally{store.close();}
+});
+import {exportJobList} from '../src/job-export';
+test('portable job export keeps uncertain facts uncertain and omits conversations, profile and old audit history',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'job-export-')),store=new JobRecordsStore(root),now=new Date(2026,10,4,12);
+ try{let saved=store.request({operation:'import-jobs',raw:JSON.stringify([{company:'A',title:'Engineer',stage:'applied',evidence:'Old claim without date',nextAction:'Check claim'}]),source:'Old notes',key:'x',selected:[1],revision:0},now);saved=store.request({operation:'message',text:'Private synthetic conversation',revision:1},now);const raw=exportJobList(saved),rows=JSON.parse(raw);assert.equal(rows.length,1);assert.equal(rows[0].stage,'unknown');assert.equal(rows[0].nextAction,'Check claim');assert.equal(raw.includes('Private synthetic conversation'),false);assert.equal(raw.includes('batchId'),false);const preview=prepareJobImport(raw,'Exported list',{...saved,jobs:[]},now);assert.equal(preview.rows[0].status,'review');assert.equal(preview.rows[0].fields!.stage,'considering');assert.throws(()=>exportJobList({...saved,demo:true}));
+ }finally{store.close();}
+});
+
+test('review view and indexed deadline sorting retain completed/cancelled history without treating it as pending',()=>{
+ const jobs=Array.from({length:1000},(_,i)=>({id:String(i),company:'Company '+i,title:'Engineer',stage:'considering' as const,match:'',reasons:[],next:'',evidence:'',materials:[],history:[],needsReview:i%10===0}));
+ const todos=jobs.flatMap(j=>[{id:'a'+j.id,jobId:j.id,title:'Later',due:'2026-11-20',dueDate:'2026-11-20',done:false},{id:'b'+j.id,jobId:j.id,title:'Finished',due:'2020-01-01',dueDate:'2020-01-01',done:true}]);
+ todos.push({id:'first',jobId:'999',title:'First',due:'2026-11-01',dueDate:'2026-11-01',done:false});assert.equal(visibleJobs(jobs,todos,'','all','all','deadline')[0].id,'999');assert.equal(visibleJobs(jobs,todos,'','all','review','deadline').length,100);assert.equal(visibleJobs(jobs,todos,'Company 990','all','review','company')[0].id,'990');
+});
+test('recording progress after reviewed import preserves prior message and brief provenance',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'import-provenance-')),store=new JobRecordsStore(root),now=new Date(2026,10,4,12);
+ try{let state=store.request({operation:'import-jobs',raw:JSON.stringify([{company:'A',title:'Engineer',stage:'unknown'}]),source:'Unverified synthetic chat',key:'snapshot',selected:[1],revision:0},now);assert.equal(state.todos.length,1);state=store.request({operation:'message',text:'What is uncertain?',revision:1},now);const snapshot=JSON.stringify(state.messages.find(m=>m.role==='user')!.context);store.briefing({operation:'check'},now);const brief=store.briefing({operation:'read',day:'2026-11-04'},now).brief!;assert.equal(brief.counts.undated,1);assert.match(brief.actions[0].source,/Unverified synthetic chat/);
+ state=store.request({operation:'progress',id:state.jobs[0].id,stage:'applied',appliedOn:'2026-11-01',evidence:'User reviewed confirmation',revision:2},now);assert.equal(state.jobs[0].needsReview,false);assert.equal(state.todos.find(t=>t.kind==='review')!.cancelled,true);assert.equal(JSON.stringify(state.messages.find(m=>m.role==='user')!.context),snapshot);assert.equal(store.briefing({operation:'read',day:'2026-11-04'},now).brief!.sourceRevision,2);
+ }finally{store.close();}
+});
+test('todo reschedule/cancel/restore preserve history, snapshots and automatic follow-up origin',()=>{
+ const f=recordFixture();try{let state=f.write({operation:'add-job',key:'todo-life',fields:{...recordFields,stage:'applied',appliedOn:'2026-10-01',evidence:'User reviewed confirmation'}});const job=state.jobs[0],todo=state.todos.find(t=>t.kind==='followup')!;
+ f.write({operation:'message',text:'Show current tasks'});const frozen=JSON.stringify(f.read().messages.find(m=>m.role==='user')!.context);
+ state=f.write({operation:'revise-todo',id:todo.id,action:'reschedule',dueDate:'2026-11-10',reason:'Recruiter asked me to check next week'});const moved=state.todos.find(t=>t.id===todo.id)!;assert.equal(moved.anchor,'2026-10-01');assert.equal(moved.dueDate,'2026-11-10');assert.equal(moved.changes![0].previousDueDate,'2026-10-08');
+ state=f.write({operation:'revise-todo',id:todo.id,action:'cancel',dueDate:'',reason:'Pause this follow-up'});assert.equal(state.todos.find(t=>t.id===todo.id)!.cancelled,true);
+ state=f.write({operation:'revise-todo',id:todo.id,action:'restore',dueDate:'',reason:'Resume follow-up'});assert.equal(state.todos.find(t=>t.id===todo.id)!.cancelled,false);assert.equal(state.todos.find(t=>t.id===todo.id)!.changes!.length,3);
+ assert.equal(JSON.stringify(state.messages.find(m=>m.role==='user')!.context),frozen);
+ state=f.write({operation:'progress',id:job.id,stage:'applied',appliedOn:'2026-10-01',evidence:'New confirmation with same date'});assert.equal(state.todos.find(t=>t.id===todo.id)!.superseded,true);assert.throws(()=>f.write({operation:'revise-todo',id:todo.id,action:'restore',dueDate:'',reason:'Try old follow-up'}),/superseded/);assert.equal(f.read().todos.filter(t=>t.kind==='followup'&&!t.cancelled).length,1);
+ }finally{f.store.close();}
+});
+
+test('todo adjustments reject missing reasons, invalid dates, completed items and stale versions atomically',()=>{
+ const f=recordFixture();try{let state=f.write({operation:'add-job',key:'todo-errors',fields:recordFields});const todo=state.todos[0],revision=state.revision;
+ for(const fields of [{action:'reschedule',dueDate:'2026-02-30',reason:'Invalid day'},{action:'cancel',dueDate:'',reason:''},{action:'restore',dueDate:'',reason:'Not canceled'}])assert.throws(()=>f.write({operation:'revise-todo',id:todo.id,...fields}));assert.equal(f.read().revision,revision);assert.equal(f.read().todos[0].changes,undefined);
+ state=f.write({operation:'todo',id:todo.id,done:true});assert.throws(()=>f.write({operation:'revise-todo',id:todo.id,action:'reschedule',dueDate:'2026-11-10',reason:'Already complete'}),/reopen/);assert.throws(()=>f.store.request({operation:'revise-todo',id:todo.id,action:'cancel',dueDate:'',reason:'Stale window',revision}));assert.equal(f.read().todos[0].done,true);
+ }finally{f.store.close();}
+});
+test('shared application portals never silently discard distinct roles',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'shared-portal-')),store=new JobRecordsStore(root);
+ try{const raw=JSON.stringify([{company:'A',title:'Engineer',url:'https://example.invalid/jobs/1',applicationUrl:'https://example.invalid/apply',stage:'considering'},{company:'A',title:'Designer',url:'https://example.invalid/jobs/2',applicationUrl:'https://example.invalid/apply',stage:'considering'}]);const p=store.previewImport(raw,'x');assert.deepEqual(p.rows.map(r=>r.status),['ready','review']);assert.match(p.rows[1].message,/Shared application/);const saved=store.request({operation:'import-jobs',raw,source:'x',key:'portal',selected:[1,2],revision:0});assert.equal(saved.jobs.length,2);assert.equal(saved.jobs[1].title,'Designer');assert.equal(saved.jobs[1].needsReview,true);
+ }finally{store.close();}
+});

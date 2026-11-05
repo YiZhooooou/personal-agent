@@ -1,0 +1,1 @@
+export const importExample=JSON.stringify([{company:'Example Company',title:'Software Engineer',url:'https://example.invalid/jobs/123',stage:'unknown',notes:'从旧对话整理，尚未核实 / From old notes, not verified',nextAction:'核对投递记录 / Check application history'}],null,2);

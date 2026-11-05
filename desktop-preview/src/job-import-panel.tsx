@@ -1,0 +1,28 @@
+import {tableExample} from './job-import-table';
+import React,{useRef,useState} from 'react';
+import {importExample} from './job-import-example';
+import type {ImportPreview} from './job-import';
+import type {JobRequest} from './job-records';
+const stages={considering:'待考虑 / Considering',preparing:'准备中 / Preparing',applied:'已投递 / Applied',interview:'面试 / Interview',closed:'结束 / Closed'};
+export function JobImportPanel({onSave,onClose,pending,errorMessage,onClearError}:{onSave:(request:JobRequest)=>Promise<boolean>;onClose:()=>void;pending:boolean;errorMessage:string;onClearError?:()=>void}){
+ const [raw,setRaw]=useState(''),[source,setSource]=useState('旧求职资料 / Previous job-search notes'),[preview,setPreview]=useState<ImportPreview|null>(null),[selected,setSelected]=useState<number[]>([]),[checking,setChecking]=useState(false),[error,setError]=useState('');
+ const key=useRef(crypto.randomUUID());
+ function invalidate(){onClearError?.();setPreview(null);setSelected([]);setError('');key.current=crypto.randomUUID();}
+ async function check(){onClearError?.();setChecking(true);setError('');setPreview(null);setSelected([]);try{const result=await window.agent.jobImportPreview(raw,source);if(!result.ok)throw new Error(result.error);setPreview(result.value);setSelected(result.value.rows.filter(r=>r.status==='ready').map(r=>r.row));}catch(e){setError(String(e));}finally{setChecking(false);}}
+ async function save(){if(!preview)return;setError('');if(await onSave({operation:'import-jobs',raw,source,selected,key:key.current,revision:preview.revision}))onClose();}
+ const busy=pending||checking;
+ return <section className="job-import-panel"><div className="job-section-title"><h2>审核导入岗位 / Review job import</h2><button disabled={busy} onClick={onClose}>关闭 / Close</button></div>
+  <p>每批最多 200 条。先预览，再选择保存。只保存本机，不访问链接。不会覆盖已有岗位。<br/>Up to 200 rows per batch. Preview, select and save locally. Links are not visited and existing jobs are not overwritten.</p>
+  <label className="profile-field">资料来源 / Source<input aria-label="导入资料来源 / Import source" value={source} maxLength={200} disabled={busy} onChange={e=>{setSource(e.target.value);invalidate();}}/></label>
+  <label className="profile-field">表格或 JSON 清单 / Table or JSON list<textarea autoFocus aria-label="导入岗位清单 / Import job list" value={raw} maxLength={500000} disabled={busy} onChange={e=>{setRaw(e.target.value);invalidate();}} placeholder={'粘贴含表头的表格、CSV 或 JSON / Paste a table with headers, CSV or JSON'}/></label>
+  <details><summary>格式与示例 / Format and example</summary><p>必填 company、title；可选 url、applicationUrl、description、notes、nextAction、stage、appliedOn（YYYY-MM-DD）、evidence。stage 使用 considering、preparing、applied、interview、closed 或 unknown。<br/>Company and title are required. Other supported fields are listed above. Applied status requires a date and evidence. Missing evidence is flagged for review.</p><p>也可从表格复制，首行使用公司、职位、阶段、投递日期、依据等列名。日期必须为 YYYY-MM-DD。<br/>You can also paste spreadsheet rows or CSV with the headers above. Dates must use YYYY-MM-DD.</p><pre>{tableExample}</pre><pre>{importExample}</pre><button disabled={busy} onClick={()=>{setRaw(importExample);invalidate();}}>填入 JSON 示例 / Use JSON example</button><button disabled={busy} onClick={()=>{setRaw(tableExample);invalidate();}}>填入表格示例 / Use table example</button></details>
+  <div className="button-row"><button disabled={busy||!raw.trim()||!source.trim()} onClick={()=>void check()}>{checking?'检查中 / Checking…':'预览清单 / Preview list'}</button></div>
+  {(error||errorMessage)&&<p role="alert" className="record-error">{error||errorMessage}</p>}
+  {preview&&<><p role="status">{preview.rows.length} 行 / rows · 可导入 / Ready {preview.rows.filter(r=>r.status==='ready').length} · 待核对 / Review {preview.rows.filter(r=>r.status==='review').length} · 重复 / Duplicates {preview.rows.filter(r=>r.status==='duplicate').length} · 错误 / Errors {preview.rows.filter(r=>r.status==='error').length}</p>
+   <p>“待核对”不会默认选中。相同来源链接跳过；共用申请入口、同公司职位只提示核对，可能属于不同岗位。<br/>Review rows are not selected by default. Matching source links are skipped; shared application portals and similar names require your judgment.</p>
+   <div className="job-import-rows">{preview.rows.map(row=><label className={'job-import-row '+row.status} key={row.row}><input type="checkbox" aria-label={'导入第 '+row.row+' 行 / Import row '+row.row} disabled={busy||row.status==='duplicate'||row.status==='error'} checked={selected.includes(row.row)} onChange={e=>setSelected(e.target.checked?[...selected,row.row]:selected.filter(n=>n!==row.row))}/><span><strong>{row.row}. {row.company||'—'} · {row.title||'—'}</strong>{row.fields&&<small>{stages[row.fields.stage]}</small>}<small>{row.message}</small></span></label>)}</div>
+   <button className="primary" disabled={busy||!selected.length} onClick={()=>void save()}>{pending?'保存中 / Saving…':`确认保存 ${selected.length} 条 / Save ${selected.length} selected`}</button>
+   <p className="job-caption">如记录在预览后变化，请重新预览；输入不会丢失。此操作不发送邮件或提交申请。<br/>If records change after preview, preview again; your input stays here. No email or application is sent.</p>
+  </>}
+ </section>;
+}

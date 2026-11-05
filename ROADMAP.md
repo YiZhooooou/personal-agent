@@ -1,3 +1,11 @@
+## Current checkpoint — 2026-11-04 / 当前进度
+
+求职主线：审核导入旧岗位、状态不明核对、可追溯的跟进改期/取消/恢复、岗位清单导出和紧凑首页。后台简报已支持显式启动与停止，电脑需运行；通知、Gmail、真实 Master 推理仍待接通。当前原型有岗位聚合 5MB 上限和会话数量限制，不能声称长期规模化完成。下一步先验证后台恢复与集中原生验收，再接只读 Gmail 和受控真实推理。
+
+Current job-search work: reviewed imports, uncertain-record review, auditable follow-up changes, portable job lists and a compact dashboard. Brief workers have explicit start/stop controls while the computer runs. Notifications, Gmail and real Master inference remain pending. The prototype still has a 5MB aggregate and bounded conversation history; long-term scalability is not complete. Next: background recovery and grouped native acceptance, followed by read-only Gmail and controlled inference.
+
+Earlier entries below are historical evidence, not current capability claims.
+
 ## 最新进度：简报生成与历史
 
 每日10点后的本机快照、当天补生成、同日去重、历史/阅读收据已实现。工作台打开时检查，不是常驻后台；Windows通知、关窗后生成、Gmail和真实推理仍待实现。通知投递与阅读不得混为一谈。当前88项自动测试/构建通过，原生运行仍是独立未解决项。
@@ -10,7 +18,7 @@
 
 以 [产品约定与复用审查](docs/job-workbench-direction.md) 为准：一个持续 Master + 求职看板，优先减少翻聊天、跟进遗漏和进度不清。先交付岗位/邮件/待办结构化闭环，后扩展找岗位和人工提交前的辅助填表。旧文件执行/通用多 agent 退出第一版主线，旧数据和代码保留。新求职功能尚未实现；当前是范围审查与复用决策。
 
-## Active workbench scope (2026-11-02; supersedes historical staging below)
+## Historical generic-workbench scope (superseded by job-search direction)
 
 First release: persistent project handoffs/memory and source snapshots; background tasks; bounded sequential Master delegation; observable daily queues; explicit single-file review/Apply/Undo and execution handoffs. Existing Python/OneDrive/IAM implementations remain preserved references, not automatic commitments for the Electron first release.
 

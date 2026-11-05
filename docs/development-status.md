@@ -1,3 +1,17 @@
+## 2026-11-04 — Reviewed imports and follow-up control / 审核导入与跟进管理
+
+Implemented local review of pasted spreadsheet/CSV/JSON lists (1–200 rows per batch, 500k input characters). Preview makes no record changes. Invalid rows cannot be selected; exact source URLs are deduplicated; shared application portals and similar names require review. Incomplete status evidence is saved as considering with a review flag, preserving the reported stage/date/source. Commit is atomic and revision-checked with request-key receipts for lost-response retries. Automatic review tasks and seven-day follow-ups have explicit origins. Selected rows only are stored; no links are opened and no model/mailbox is accessed.
+
+新增表格、CSV、JSON 清单本机审核导入。预览不改岗位；相同来源链接跳过，共用申请入口和同名岗位提示核对。依据不完整的状态保存为待考虑并标记待核对，原阶段、日期与来源仍可查。整批保存具有事务、版本冲突与重试去重保护；只保存选中行。
+
+Added a review view, completed-task disclosure, collapsed brief settings and indexed deadline sorting. Personal job-list export uses a native save dialog and excludes messages, profile and audit history; it is not a full backup. Reimport creates new next-action/follow-up records, and large lists must be split into batches of at most 200. Existing records are never replaced by import. Task reschedule/cancel/restore require reasons and preserve history; superseded automatic tasks cannot be restored. New seven-day task wording asks the user to check replies rather than asserting no reply arrived. Existing saved text is unchanged.
+
+新增待核对视图；完成事项与简报设置默认收纳。可通过系统保存对话框导出岗位清单（不是完整备份）。待办可按原因改期、取消、恢复，并保留历史；被新进度替代的自动事项不能恢复。新增七天跟进文案不再假定未收到回复。
+
+Validation: 108 tests passed, including 200-row actual CLI import and concurrent stale-batch rejection, parser boundaries, replay/rollback, shared portals, frozen message/brief provenance, and the task-adjustment UI. Build passed. UTC+14 core checks recorded separately. Browser visual verification was attempted but loopback access was denied; no screenshot or native acceptance is claimed. Native save dialog and native close-window acceptance remain pending. No Gmail, live AI, Windows notifications, OS startup registration or full distribution rebuild. Test workers and the owned test server were stopped.
+
+验证：108 项自动测试通过；实际 CLI 批量 200 条与并发冲突验证通过；构建通过。浏览器本机回环访问被拒绝，视觉与原生窗口验收不计为通过。未接真实邮箱或模型，未修改用户资料，未重打完整分发包。
+
 ## 2026-11-02 — 双语简报 / Bilingual briefs
 
 按用户新偏好，日常对话可中文，开发进度/验收简报与产品每日简报需有英文版。新增默认中英双语系统摘要，以及中文/英文单语查看控件。新快照一起保存中英文系统摘要，计数和源版本相同；历史快照缺少双语字段时，只根据原快照生成显示内容，不迁移或重写原payload。公司名、职位、待办和依据保留原始录入语言，不自动翻译、不上传模型；这不是用户原文的完整机器翻译功能。

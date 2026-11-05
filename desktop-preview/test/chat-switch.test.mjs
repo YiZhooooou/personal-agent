@@ -147,9 +147,13 @@ test('job workbench selection, stage correction and todo completion update one l
  const before=calls;await act(async()=>{ui=create(React.createElement(JobWorkbench,{space:'work'}));});assert.equal(calls,before);assert.equal(ui.root.findAllByType('textarea').length,0);await act(async()=>ui.unmount());
 });
 
-test('failed job save retains the last saved state and clears earlier success feedback',async()=>{
- const os=await import('node:os'),path=await import('node:path');const root=await fs.mkdtemp(path.join(os.tmpdir(),'job-failure-ui-')),demo=new JobDemoStore(root);let fail=false;globalThis.window={agent:{jobDemo:async request=>fail?{ok:false,error:'Synthetic save failure'}:{ok:true,value:demo.request(request)}}};let ui;await act(async()=>{ui=create(React.createElement(JobWorkbench,{space:'personal'}),{createNodeMock:()=>({focus(){},scrollIntoView(){}})});});
- const label='完成：确认面试时间并准备自我介绍';await act(async()=>ui.root.findByProps({'aria-label':label}).props.onChange({target:{checked:true}}));assert.equal(ui.root.findAllByProps({role:'status'}).length,1);fail=true;await act(async()=>ui.root.findByProps({'aria-label':label}).props.onChange({target:{checked:false}}));assert.equal(ui.root.findByProps({'aria-label':label}).props.checked,true);assert.equal(ui.root.findAllByProps({role:'status'}).length,0);assert.match(ui.root.findByProps({role:'alert'}).children.join(''),/Synthetic save failure/);fail=false;await act(async()=>ui.root.findByProps({'aria-label':label}).props.onChange({target:{checked:false}}));assert.equal(ui.root.findByProps({'aria-label':label}).props.checked,false);await act(async()=>ui.unmount());
+test('failed job save retains the completed item and clears earlier success feedback',async()=>{
+ const os=await import('node:os'),path=await import('node:path');const root=await fs.mkdtemp(path.join(os.tmpdir(),'job-failure-ui-')),demo=new JobDemoStore(root);let fail=false;globalThis.window={agent:{jobDemo:async request=>fail?{ok:false,error:'Synthetic save failure'}:{ok:true,value:demo.request(request)}}};let ui;
+ try{await act(async()=>{ui=create(React.createElement(JobWorkbench,{space:'personal'}),{createNodeMock:()=>({focus(){}})});});
+ const label='完成：确认面试时间并准备自我介绍';await act(async()=>ui.root.findByProps({'aria-label':label}).props.onChange({target:{checked:true}}));assert.equal(ui.root.findAllByProps({role:'status'}).length,1);assert.equal(ui.root.findAllByProps({'aria-label':label}).length,0);
+ fail=true;await act(async()=>ui.root.findAllByType('button').find(b=>b.children.includes('重新打开待办')).props.onClick());assert.equal(demo.request({operation:'get'}).todos[0].done,true);assert.equal(ui.root.findAllByProps({role:'status'}).length,0);assert.match(ui.root.findByProps({role:'alert'}).children.join(''),/Synthetic save failure/);
+ fail=false;await act(async()=>ui.root.findAllByType('button').find(b=>b.children.includes('重新打开待办')).props.onClick());assert.equal(ui.root.findByProps({'aria-label':label}).props.checked,false);
+ }finally{if(ui)await act(async()=>ui.unmount());}
 });
 
 test('large job table paginates, searches and preserves draft when Master is collapsed',async()=>{
@@ -192,4 +196,30 @@ test('brief worker controls dispatch independently and disabled Personal panel m
  for(const [label,op] of [['启动后台简报','start'],['停止后台简报','stop'],['刷新后台状态','status']]){await act(async()=>ui.root.findAllByType('button').find(b=>b.children.includes(label)).props.onClick());assert.equal(calls.at(-1),op);}
  await act(async()=>ui.unmount());calls=[];await act(async()=>{ui=create(React.createElement(JobBriefPanel,{enabled:false,onSelect:()=>{}}));});assert.deepEqual(calls,[]);
  }finally{if(ui)await act(async()=>ui.unmount());}
+});
+await build({entryPoints:['src/job-import-panel.tsx'],outfile:'dist-test/job-import-panel.cjs',bundle:true,platform:'node',format:'cjs',external:['react']});
+const {JobImportPanel}=await import('../dist-test/job-import-panel.cjs');
+test('import review leaves uncertain rows unselected and preserves input after save conflict',async()=>{
+ const os=await import('node:os'),path=await import('node:path'),root=await fs.mkdtemp(path.join(os.tmpdir(),'import-ui-')),store=new JobRecordsStore(root);let ui,request,closed=false;
+ globalThis.window={agent:{jobImportPreview:async(raw,source)=>({ok:true,value:store.previewImport(raw,source,new Date(2026,10,4,12))})}};
+ try{await act(async()=>{ui=create(React.createElement(JobImportPanel,{pending:false,errorMessage:'',onClose:()=>{closed=true},onSave:async r=>{request=r;return false}}));});
+  const raw=JSON.stringify([{company:'A',title:'Engineer',stage:'considering'},{company:'B',title:'Engineer',stage:'unknown'},{company:'Bad',title:'Engineer',url:'javascript:bad'}]);await act(async()=>ui.root.findByProps({'aria-label':'导入岗位清单 / Import job list'}).props.onChange({target:{value:raw}}));
+  await act(async()=>ui.root.findAllByType('button').find(b=>b.children.includes('预览清单 / Preview list')).props.onClick());
+  assert.equal(ui.root.findByProps({'aria-label':'导入第 1 行 / Import row 1'}).props.checked,true);assert.equal(ui.root.findByProps({'aria-label':'导入第 2 行 / Import row 2'}).props.checked,false);assert.equal(ui.root.findByProps({'aria-label':'导入第 3 行 / Import row 3'}).props.disabled,true);
+  await act(async()=>ui.root.findByProps({'aria-label':'导入第 2 行 / Import row 2'}).props.onChange({target:{checked:true}}));await act(async()=>ui.root.findAllByType('button').find(b=>b.props.className==='primary').props.onClick());assert.deepEqual(request.selected,[1,2]);assert.equal(request.revision,0);assert.equal(closed,false);assert.equal(ui.root.findByProps({'aria-label':'导入岗位清单 / Import job list'}).props.value,raw);
+  await act(async()=>ui.root.findByProps({'aria-label':'导入岗位清单 / Import job list'}).props.onChange({target:{value:'[]'}}));assert.equal(ui.root.findAllByProps({'aria-label':'导入第 1 行 / Import row 1'}).length,0);
+ }finally{if(ui)await act(async()=>ui.unmount());store.close();}
+});
+test('real todo adjustment UI retains failed input and saves reschedule, cancellation and restoration',async()=>{
+ const os=await import('node:os'),path=await import('node:path'),root=await fs.mkdtemp(path.join(os.tmpdir(),'todo-adjust-ui-')),records=new JobRecordsStore(root);let ui,fail=false;
+ const first=records.request({operation:'add-job',key:'followup',revision:0,fields:{company:'Synthetic',title:'Engineer',url:'',applicationUrl:'',description:'',notes:'',nextAction:'',stage:'applied',appliedOn:'2026-10-01',evidence:'Synthetic user confirmation'}},new Date(2026,10,4,12)),title=first.todos[0].title;
+ globalThis.window={agent:{jobRecords:async r=>fail?{ok:false,error:'Synthetic write conflict'}:{ok:true,value:records.request(r,new Date(2026,10,4,12))}}};
+ try{await act(async()=>{ui=create(React.createElement(JobWorkbench,{space:'personal',initialDataset:'real'}));});await act(async()=>ui.root.findAllByProps({className:'job-card'})[0].props.onClick({currentTarget:null}));
+  const adjust=()=>ui.root.findAllByType('button').find(b=>b.children.includes('调整待办'));
+  await act(async()=>adjust().props.onClick());await act(async()=>ui.root.findByProps({'aria-label':'待办新日期：'+title}).props.onChange({target:{value:'2026-11-15'}}));await act(async()=>ui.root.findByProps({'aria-label':'待办调整原因：'+title}).props.onChange({target:{value:'Recruiter requested more time'}}));
+  fail=true;await act(async()=>ui.root.findByProps({className:'todo-adjustment'}).props.onSubmit({preventDefault(){}}));assert.equal(ui.root.findByProps({'aria-label':'待办调整原因：'+title}).props.value,'Recruiter requested more time');assert.equal(records.request({operation:'get'}).todos[0].dueDate,'2026-10-08');
+  fail=false;await act(async()=>ui.root.findByProps({className:'todo-adjustment'}).props.onSubmit({preventDefault(){}}));assert.equal(records.request({operation:'get'}).todos[0].dueDate,'2026-11-15');
+  for(const action of ['cancel','restore']){await act(async()=>adjust().props.onClick());await act(async()=>ui.root.findByProps({'aria-label':'待办操作：'+title}).props.onChange({target:{value:action}}));await act(async()=>ui.root.findByProps({'aria-label':'待办调整原因：'+title}).props.onChange({target:{value:'User '+action}}));await act(async()=>ui.root.findByProps({className:'todo-adjustment'}).props.onSubmit({preventDefault(){}}));assert.equal(!!records.request({operation:'get'}).todos[0].cancelled,action==='cancel');}
+  assert.equal(records.request({operation:'get'}).todos[0].changes.length,3);
+ }finally{if(ui)await act(async()=>ui.unmount());records.close();}
 });

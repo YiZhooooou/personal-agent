@@ -278,3 +278,10 @@ test('production brief CLI detaches, checks and stops without touching legacy ta
   assert.equal(fs.existsSync(path.join(root,'tasks.sqlite3')),false);
  }finally{stopBriefWorker(root);await wait(()=>briefWorkerStatus(root).state==='stopped');}
 });
+test('production CLI previews and atomically imports 200 synthetic rows; concurrent stale batch is rejected',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'job-import-cli-')),service=new TaskService(root,path.resolve('dist-test/task-cli.cjs'));
+ const raw=JSON.stringify(Array.from({length:200},(_,i)=>({company:'Synthetic '+i,title:'Engineer',url:'https://example.invalid/jobs/'+i,stage:i<40?'applied':i<80?'unknown':'considering',appliedOn:i<40?'2026-10-01':'',evidence:i<40?'Synthetic submitted claim':''})));
+ const preview=await service.call('import-preview',[],JSON.stringify({raw,source:'Synthetic bulk test'}));assert.equal(preview.rows.length,200);assert.equal(preview.rows.filter((r:any)=>r.status==='review').length,40);
+ const input={operation:'import-jobs',raw,source:'Synthetic bulk test',selected:Array.from({length:200},(_,i)=>i+1),revision:0};
+ const outcomes=await Promise.allSettled(['bulk-1','bulk-2'].map(key=>service.call('records',[],JSON.stringify({...input,key}))));assert.equal(outcomes.filter(r=>r.status==='fulfilled').length,1);const saved=await service.call('records',[],JSON.stringify({operation:'get'}));assert.equal(saved.jobs.length,200);assert.equal(saved.todos.length,80);assert.equal(saved.revision,1);assert.equal(saved.jobs.filter((j:any)=>j.needsReview).length,40);assert.equal(fs.existsSync(path.join(root,'tasks.sqlite3')),false);
+});
