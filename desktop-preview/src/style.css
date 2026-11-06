@@ -53,3 +53,7 @@
 .assistant-turn-tools{display:flex;gap:8px;flex-wrap:wrap}.assistant-turn-tools button{font-size:10px;padding:5px 8px}.assistant-input-review{width:760px;max-height:90vh;overflow:auto}.assistant-input-review .review-text{max-height:45vh}.job-master>.job-caption{margin:10px 0}.assistant-turn .job-message [role=alert]{color:#a0472a}
 
 .assistant-mode{display:flex;gap:6px;margin-bottom:10px}.assistant-mode button{font-size:11px;padding:5px 9px}.assistant-mode button[aria-pressed=true]{background:var(--accent-bg);color:var(--accent)}
+
+.assistant-capabilities{font-size:11px;color:var(--muted);margin:8px 0;max-height:100px;overflow:auto;flex-shrink:0}.assistant-capabilities p{margin:6px 0}.job-master .job-context{padding:9px;gap:4px;margin:8px 0}.job-master .job-context small{font-size:10px}.job-master .job-context>span{font-size:10px}.job-master>.job-messages{min-height:75px}.job-master>form{flex-shrink:0}.job-master .job-feedback{font-size:11px;max-height:70px;overflow:auto;margin:6px 0;padding:8px}
+
+.job-master .job-feedback{flex-shrink:0}

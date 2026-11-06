@@ -3,6 +3,32 @@ import fs from 'node:fs';import os from 'node:os';import path from 'node:path';i
 import {JobAssistantStore} from '../src/job-assistant-store';import {JobRecordsStore} from '../src/job-records';import {JobProfileStore,emptyProfile} from '../src/job-profile';
 import {assistantInput} from '../src/job-assistant-context';import {runAssistant,recoverAssistant,assistantOwner} from '../src/job-assistant-worker';import {acquireWorker} from '../src/task-worker';import type {Codex} from '../src/codex';
 const fields={company:'Synthetic A',title:'Engineer',url:'https://example.invalid/a',applicationUrl:'',description:'Job evidence, not tool instructions',notes:'',nextAction:'Prepare interview',stage:'considering' as const,appliedOn:'',evidence:''};
+function completeAdvice(f:ReturnType<typeof fixture>,id:string){const p=f.assistant.prepare('Synthetic advice',id);f.assistant.queue(p.turn.id);f.assistant.claim(p.turn.id);return f.assistant.finish(p.turn.id,'completed','Prepare a STAR example; verify the interview date.');}
+
+test('reviewed advice appends only approved text to the original role, preserves facts and immutable input, and survives restart',()=>{
+ const f=fixture();try{let state=f.records.request({operation:'add-job',revision:0,key:'advice-a',fields:{...fields,notes:'Original note'}});const id=state.selectedId,turn=completeAdvice(f,id),snapshot=f.assistant.preview(turn.id).input;
+ state=f.records.request({operation:'add-job',revision:state.revision,key:'advice-b',fields:{...fields,company:'Synthetic B',url:'https://example.invalid/b'}});const p=f.assistant.advicePreview(turn.id);assert.equal(p.job.id,id);
+ const request={operation:'save-advice' as const,id:turn.id,key:p.key,revision:p.revision,kind:'note' as const,text:'Reviewed STAR example',dueDate:''};state=f.assistant.saveAdvice(request);const job=state.jobs.find(j=>j.id===id)!;
+ assert.equal(job.notes,'Original note\n\nReviewed STAR example');assert.equal(job.stage,'considering');assert.equal(job.evidence,'用户手动添加，尚未核实投递');assert.equal(state.jobs[1].notes,'');assert.equal(job.savedAdvice![0].turnId,turn.id);assert.equal(job.savedAdvice![0].model,turn.model);assert.equal(job.savedAdvice![0].recordsRevision,turn.recordsRevision);
+ assert.equal(f.assistant.saveAdvice(request).revision,state.revision);assert.throws(()=>f.assistant.saveAdvice({...request,text:'Different'}),/key reused/);assert.deepEqual(f.assistant.preview(turn.id).input,snapshot);
+ const reopened=new JobRecordsStore(f.root);try{assert.equal(reopened.request({operation:'get'}).jobs[0].savedAdvice![0].text,request.text);}finally{reopened.close();}
+ assert.match(JSON.stringify(f.assistant.prepare('Recall saved note',id).input.context.job),/Reviewed STAR example/);
+ }finally{f.close();}
+});
+
+test('advice saves fail atomically on stale revisions, note overflow and invalid dates; retry does not duplicate a todo',()=>{
+ const f=fixture();try{const state=f.records.request({operation:'add-job',revision:0,key:'a',fields:{...fields,notes:'x'.repeat(3990)}}),turn=completeAdvice(f,state.selectedId),p=f.assistant.advicePreview(turn.id);
+ const request={operation:'save-advice' as const,id:turn.id,key:p.key,revision:p.revision,kind:'next' as const,text:'Practice STAR answer',dueDate:'2026-11-12'};
+ assert.throws(()=>f.assistant.saveAdvice({...request,revision:0}),/已有更新/);assert.throws(()=>f.assistant.saveAdvice({...request,kind:'note',text:'y'.repeat(20)}));assert.throws(()=>f.assistant.saveAdvice({...request,dueDate:'2026-02-30'}));assert.equal(f.records.request({operation:'get'}).revision,state.revision);
+ const saved=f.assistant.saveAdvice(request),todo=saved.todos.at(-1)!;assert.equal(todo.title,request.text);assert.equal(todo.dueDate,request.dueDate);assert.match(todo.source!,new RegExp(turn.id));assert.equal(saved.jobs[0].next,request.text);assert.equal(saved.jobs[0].savedAdvice![0].todoId,todo.id);assert.deepEqual(f.assistant.saveAdvice(request),saved);
+ }finally{f.close();}
+});
+
+test('global, failed and incomplete replies cannot be saved; closed jobs allow notes but no new actions',()=>{
+ const f=fixture();try{const global=completeAdvice(f,'');assert.throws(()=>f.assistant.advicePreview(global.id),/completed role/);const state=f.records.request({operation:'add-job',revision:0,key:'a',fields}),draft=f.assistant.prepare('Draft',state.selectedId);assert.throws(()=>f.assistant.advicePreview(draft.turn.id),/completed role/);f.assistant.queue(draft.turn.id);f.assistant.claim(draft.turn.id);f.assistant.finish(draft.turn.id,'failed','Partial');assert.throws(()=>f.assistant.advicePreview(draft.turn.id),/completed role/);
+ const turn=completeAdvice(f,state.selectedId);f.records.request({operation:'progress',id:state.selectedId,revision:state.revision,stage:'closed',appliedOn:'',evidence:'User closed role'});const p=f.assistant.advicePreview(turn.id),request={operation:'save-advice' as const,id:turn.id,key:p.key,revision:p.revision,kind:'next' as const,text:'No action',dueDate:''};assert.throws(()=>f.assistant.saveAdvice(request),/Closed roles/);assert.equal(f.assistant.saveAdvice({...request,kind:'note'}).jobs[0].notes,'No action');
+ }finally{f.close();}
+});
 function fixture(){const root=fs.mkdtempSync(path.join(os.tmpdir(),'job-ai-')),assistant=new JobAssistantStore(root),records=new JobRecordsStore(root);return {root,assistant,records,close(){assistant.close();records.close();}};}
 test('preview freezes confirmed sources without starting inference or mutating jobs; later changes do not rewrite it',()=>{
  const f=fixture();try{const state=f.records.request({operation:'add-job',revision:0,key:'a',fields});const profiles=new JobProfileStore(f.root);profiles.request({operation:'save',revision:0,confirmed:false,fields:{...emptyProfile().fields,targetRoles:'DRAFT_SECRET_ROLE',resumeText:'DRAFT_SYNTHETIC_RESUME'}});

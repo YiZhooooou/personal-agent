@@ -1,3 +1,17 @@
+## 2026-11-05 — Reviewed advice retention and synthetic live success / 审核建议留存与真实连接验证
+
+After explicit session network permission, a fresh synthetic job/profile fixture completed one gpt-6-astra exchange through the original isolated managed login. The exact response was `Synthetic Example Labs | Synthetic Engineer`. No real job/profile records or credential files were read or copied, and no paid API fallback was used. The earlier restricted-environment routing failure is no longer the latest result; native Electron acceptance is still pending.
+
+获得本会话网络权限后，一条纯合成资料的真实问答通过。验证范围是一条后端模型调用，不代表原生桌面、真实个人资料全流程或 Gmail 已验收。
+
+Completed role replies now offer reviewed saving: append only user-approved text to existing notes, or update the next-action summary and create one manual todo. The source is the stored original reply, never caller-supplied metadata or the currently selected role. Source model/input revisions and approval time remain auditable. Job stages, evidence and existing tasks are untouched. Transactional revision checks preserve concurrent edits; a lost acknowledgement/retry uses the same key without duplicating notes or tasks. Closed roles accept notes only; global/failed/incomplete replies cannot be saved. A conflict leaves form text/date intact and allows reloading the current job.
+
+岗位回复可以审核后追加备注，或保存为下一步与待办。保留原回复与输入版本来源，不把 AI 建议自动当成投递事实。冲突不覆盖原记录，重试不重复创建；此前输入快照不被改写。
+
+Small-window UI now collapses Master capability help. Real undated tasks are grouped separately from dated imminent tasks; initial task batches are bounded at ten, future/completed summaries at twenty. Task links open the role detail for date adjustment. A hidden browser with synthetic 125-role data verified the review dialog, successful note save, persistence after reload, grouped undated items and a visible composer at 1280×720. Browser data and inference were fixtures; this is distinct from the separate live backend exchange.
+
+Validation: 141 automated tests, production build and source-launcher self-check passed. Seven new checks cover approved-source retention, atomic failures/idempotence, invalid source states/closed roles, actual main IPC provenance and Personal boundaries, conflict-preserving UI, role binding and bounded task overview. 56 core/assistant checks passed under UTC+14. Browser input testing also verified the date input event path and explicit scheduled-date feedback. No Python changes; Python/native/full distribution checks were not rerun. Gmail, Windows notifications, installer and complete backup remain deferred.
+
 ## 2026-11-05 — Personal Master: reviewed inference and durable context / 个人 Master 推理入口
 
 Validation: 134 automated tests and build passed; 53 core/assistant checks passed under UTC+14. These include protocol fixtures and isolated processes, not live model success. Live connectivity remains blocked before inference. Native rendering, login and a completed synthetic model turn remain acceptance items.

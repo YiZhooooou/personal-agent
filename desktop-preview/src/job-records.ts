@@ -1,3 +1,4 @@
+import type {AssistantSaveSource} from './job-assistant-types';
 import {reviseTodo,recordTodoChange} from './job-todo';
 import type {TodoAction} from './job-todo';
 import {prepareJobImport} from './job-import';
@@ -11,7 +12,7 @@ import type {DemoJob,DemoTodo,JobDemoState,JobStage,DemoRequest} from './job-dem
 import {jobStages} from './job-demo';import {JobProfileStore} from './job-profile';import {localDay,validDay,addDays,pendingTodo} from './job-dates';
 export interface JobFields{company:string;title:string;url:string;applicationUrl:string;description:string;notes:string;nextAction:string;}
 export interface NewJobFields extends JobFields{stage:JobStage;appliedOn:string;evidence:string;}
-export type JobRequest=(DemoRequest|{operation:'revise-todo';id:string;action:TodoAction;dueDate:string;reason:string}|{operation:'import-jobs';key:string;raw:string;source:string;selected:number[]}|{operation:'add-job';key:string;fields:NewJobFields}|{operation:'update-job';id:string;fields:JobFields}|{operation:'add-todo';id:string;title:string;dueDate:string}|{operation:'progress';id:string;stage:JobStage;appliedOn:string;evidence:string})&{revision?:number;jobId?:string};
+export type JobRequest=(DemoRequest|{operation:'save-assistant-advice';id:string;key:string;kind:'note'|'next';text:string;dueDate:string;source:AssistantSaveSource}|{operation:'revise-todo';id:string;action:TodoAction;dueDate:string;reason:string}|{operation:'import-jobs';key:string;raw:string;source:string;selected:number[]}|{operation:'add-job';key:string;fields:NewJobFields}|{operation:'update-job';id:string;fields:JobFields}|{operation:'add-todo';id:string;title:string;dueDate:string}|{operation:'progress';id:string;stage:JobStage;appliedOn:string;evidence:string})&{revision?:number;jobId?:string};
 function empty():JobDemoState{return {version:1,demo:false,revision:0,selectedId:'',jobs:[],todos:[],messages:[{id:'welcome',role:'assistant',jobId:'',text:'这里保存你的正式岗位记录，与示例完全分开。可以手动添加岗位、记录投递依据和安排跟进。目前回复仍为本地摘要，不调用 AI、不读取邮箱、不提交申请。'}]};}
 const nextSteps:Record<JobStage,string>={considering:'核对岗位条件，决定是否准备申请',preparing:'准备申请材料，提交前由你审核',applied:'等待回复并按计划跟进',interview:'确认面试安排并准备材料',closed:'机会已结束；复核尚未完成的待办'};
 // shortcut: one transactional aggregate; normalize/index before large histories or server-side paging.
@@ -37,7 +38,13 @@ export class JobRecordsStore{
  }
  request(input:unknown,now=new Date()):JobDemoState{
   if(!input||typeof input!=='object')throw new Error('Invalid job request');const r=input as JobRequest;if(r.operation==='get')return this.read();
-  this.db.exec('BEGIN IMMEDIATE');try{const state=this.read();let importHash='';if(r.operation==='import-jobs'){text(r.key,100,true);importHash=createHash('sha256').update(JSON.stringify({raw:r.raw,source:r.source,selected:r.selected})).digest('hex');this.db.exec('CREATE TABLE IF NOT EXISTS job_imports(request_key TEXT PRIMARY KEY,hash TEXT NOT NULL)');const prior=this.db.prepare('SELECT hash FROM job_imports WHERE request_key=?').get(r.key);if(prior){if(prior.hash!==importHash)throw new Error('导入标识已用于不同内容 / Import key reused with different input');this.db.exec('COMMIT');return state;}}let clean:NewJobFields|undefined;
+  this.db.exec('BEGIN IMMEDIATE');try{const state=this.read();let importHash='';if(r.operation==='import-jobs'){text(r.key,100,true);importHash=createHash('sha256').update(JSON.stringify({raw:r.raw,source:r.source,selected:r.selected})).digest('hex');this.db.exec('CREATE TABLE IF NOT EXISTS job_imports(request_key TEXT PRIMARY KEY,hash TEXT NOT NULL)');const prior=this.db.prepare('SELECT hash FROM job_imports WHERE request_key=?').get(r.key);if(prior){if(prior.hash!==importHash)throw new Error('导入标识已用于不同内容 / Import key reused with different input');this.db.exec('COMMIT');return state;}}let adviceHash='';
+   if(r.operation==='save-assistant-advice'){
+    text(r.key,100,true);if(!['note','next'].includes(r.kind))throw new Error('Invalid advice destination');text(r.text,r.kind==='note'?1000:500,true);text(r.dueDate,10);if(r.dueDate&&!validDay(r.dueDate))throw new Error('请输入有效日期 / Enter a valid date');
+    adviceHash=createHash('sha256').update(JSON.stringify({id:r.id,kind:r.kind,text:r.text.trim(),dueDate:r.dueDate,source:r.source})).digest('hex');
+    const prior=state.jobs.flatMap(j=>j.savedAdvice||[]).find(a=>a.key===r.key);if(prior){if(prior.hash!==adviceHash)throw new Error('保存标识已用于不同内容 / Save key reused with different input');this.db.exec('COMMIT');return state;}
+   }
+   let clean:NewJobFields|undefined;
    if(r.operation==='add-job'){const base=fieldsOf(r.fields);if(typeof r.key!=='string'||!r.key||r.key.length>100)throw new Error('Invalid creation key');if(!jobStages.includes(r.fields.stage))throw new Error('Invalid job stage');clean={...base,stage:r.fields.stage,appliedOn:text(r.fields.appliedOn,10),evidence:text(r.fields.evidence,2000)};const prior=state.jobs.find(j=>j.requestKey===r.key);if(prior){if(prior.creationHash!==createHash('sha256').update(JSON.stringify(clean)).digest('hex'))throw new Error('创建标识已用于另一条记录，请重新打开新增表单');this.db.exec('COMMIT');return state;}}
    if(r.revision!==state.revision)throw new Error('岗位记录已有更新，请重新读取；表单输入仍会保留。');const stamp=now.toISOString();
    const job=('id' in r)?state.jobs.find(j=>j.id===r.id):undefined;
@@ -59,6 +66,12 @@ export class JobRecordsStore{
     if(state.jobs.length>10000)throw new Error('本机原型已达一万条记录上限');this.db.prepare('INSERT INTO job_imports(request_key,hash) VALUES(?,?)').run(r.key,importHash);
    }
    else if(r.operation==='add-job'&&clean){checkUrl(clean.url);if(state.jobs.length>=10000)throw new Error('本机原型已达一万条记录上限');const item:DemoJob={...clean,appliedOn:undefined,id:randomUUID(),stage:'considering',match:'尚未评估',reasons:['尚未运行真实匹配分析，不生成分数'],next:clean.nextAction||nextSteps[clean.stage],evidence:'用户手动添加，尚未核实投递',materials:[],history:[],createdAt:stamp,updatedAt:stamp,requestKey:r.key,creationHash:createHash('sha256').update(JSON.stringify(clean)).digest('hex')};if(clean.appliedOn&&!validDay(clean.appliedOn))throw new Error('投递日期格式无效');if(clean.stage!=='considering'||clean.evidence)progress(item,clean.stage,clean.appliedOn,clean.evidence);state.jobs.push(item);state.selectedId=item.id;if(clean.nextAction&&clean.stage!=='closed')state.todos.push({id:randomUUID(),jobId:item.id,title:clean.nextAction,due:'待安排',done:false,kind:'manual',source:'用户添加岗位时指定'});}
+   else if(r.operation==='save-assistant-advice'){
+    if(!job)throw new Error('原岗位不存在 / Original role not found');const content=r.text.trim();let todoId:string|undefined;
+    if(r.kind==='note'){const notes=[job.notes,content].filter(Boolean).join('\n\n');if(notes.length>4000)throw new Error('追加后备注超过 4,000 字符；请先编辑精简原备注，原记录未修改 / Combined notes exceed 4,000 characters; shorten existing notes first');job.notes=text(notes,4000,true);}
+    else{if(job.stage==='closed')throw new Error('已结束岗位不能新增下一步 / Closed roles cannot receive new actions');job.next=content;todoId=randomUUID();state.todos.push({id:todoId,jobId:job.id,title:content,due:r.dueDate||'待安排',...(r.dueDate?{dueDate:r.dueDate}:{}),done:false,kind:'manual',source:'用户审核 Master 回复 / User-reviewed Master reply: '+r.source.turnId});}
+    (job.savedAdvice??=[]).push({...r.source,key:r.key,hash:adviceHash,kind:r.kind,text:content,dueDate:r.kind==='next'?r.dueDate:'',at:stamp,...(todoId?{todoId}:{})});job.updatedAt=stamp;
+   }
    else if(r.operation==='update-job'){if(!job)throw new Error('岗位不存在');const f=fieldsOf(r.fields);checkUrl(f.url,job.id);Object.assign(job,{company:f.company,title:f.title,url:f.url,applicationUrl:f.applicationUrl,description:f.description,notes:f.notes,next:f.nextAction||job.next,updatedAt:stamp});}
    else if(r.operation==='progress'){if(!job)throw new Error('岗位不存在');progress(job,r.stage,r.appliedOn,r.evidence);}
    else if(r.operation==='stage'){throw new Error('正式记录更改阶段需要日期与依据，请使用进度表单');}

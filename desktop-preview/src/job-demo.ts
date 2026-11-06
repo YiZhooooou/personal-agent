@@ -1,10 +1,11 @@
+import type {AssistantSavedAdvice} from './job-assistant-types';
 import type {JobProfile,JobProfileFields} from './job-profile';
 import fs from 'node:fs';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 export const jobStages=['considering','preparing','applied','interview','closed'] as const;
 export type JobStage=typeof jobStages[number];
-export interface DemoJob{needsReview?:boolean;importSource?:{batchId:string;row:number;source:string;importedAt:string;reportedStage:string;reportedAppliedOn:string};url?:string;applicationUrl?:string;description?:string;notes?:string;createdAt?:string;updatedAt?:string;appliedOn?:string;requestKey?:string;creationHash?:string;id:string;company:string;title:string;stage:JobStage;match:string;reasons:string[];next:string;evidence:string;materials:string[];history:{at:string;stage:JobStage;source:string;fromStage?:JobStage;previousEvidence?:string;appliedOn?:string;previousAppliedOn?:string}[];}
+export interface DemoJob{savedAdvice?:AssistantSavedAdvice[];needsReview?:boolean;importSource?:{batchId:string;row:number;source:string;importedAt:string;reportedStage:string;reportedAppliedOn:string};url?:string;applicationUrl?:string;description?:string;notes?:string;createdAt?:string;updatedAt?:string;appliedOn?:string;requestKey?:string;creationHash?:string;id:string;company:string;title:string;stage:JobStage;match:string;reasons:string[];next:string;evidence:string;materials:string[];history:{at:string;stage:JobStage;source:string;fromStage?:JobStage;previousEvidence?:string;appliedOn?:string;previousAppliedOn?:string}[];}
 export interface DemoTodo{completedAt?:string;superseded?:boolean;changes?:{at:string;action:'reschedule'|'cancel'|'restore'|'complete'|'reopen';reason:string;previousDueDate:string;dueDate:string}[];dueDate?:string;kind?:'manual'|'followup'|'review';anchor?:string;cancelled?:boolean;resolution?:string;source?:string;id:string;jobId:string;title:string;due:string;done:boolean;}
 export interface DemoMessage{id:string;role:'user'|'assistant';text:string;jobId:string;context?:{profile?:{revision:number;confirmed:boolean;fields?:JobProfileFields};job:DemoJob|null;todos:DemoTodo[]};}
 export interface JobDemoState{version:1;demo:boolean;revision?:number;selectedId:string;jobs:DemoJob[];todos:DemoTodo[];messages:DemoMessage[];}

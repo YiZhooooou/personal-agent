@@ -13,3 +13,10 @@ job-assistant.sqlite3 独立存储预览、状态、部分回复和历史分页�
 AI text is never parsed as permission to mutate facts or take external actions. Saving preferences still requires confirmed profile/role edits. Read-only Gmail remains a separate milestone. This does not promise unlimited memory, automatic factual extraction or productized deployment.
 
 实际合成请求在 account/read 阶段被 workspace routing discovery 错误阻挡；公用登录域名在测试环境也解析失败。不能将自动测试通过写成账号或真实推理通过。
+
+
+## 2026-11-05 — Reviewed advice promotion
+
+A completed role reply may be retained only through a separate user review. The authoritative source role, model and input revisions come from the stored immutable turn. Saving appends approved text to the role note or creates a manual next-action todo; it never records an application, changes stage/evidence or cancels prior tasks. The existing records transaction atomically stores the edited field/todo and an approval receipt. Same-key retries return the saved result before CAS; changed same-key input is rejected. A new preview can refresh a conflict without dropping the user's form. No generic memory service or model write tool is introduced. Total notes retain their existing 4,000-character limit and the records aggregate retains its existing 5MB bound.
+
+岗位回复需经过独立审核才能留存。来源从已保存的回复取出，不接受调用方伪造；采用现有事务、版本检查和重复请求去重。不扩展通用记忆框架，不授予模型写入工具。

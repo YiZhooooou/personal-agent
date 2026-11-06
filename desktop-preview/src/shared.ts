@@ -1,4 +1,4 @@
-import type {AssistantRequest,AssistantPage,AssistantPreview,AssistantTurn} from './job-assistant-types';
+import type {AssistantRequest,AssistantPage,AssistantPreview,AssistantTurn,AssistantSavePreview} from './job-assistant-types';
 import type {ImportPreview} from './job-import';
 import type {BriefWorkerStatus} from './job-brief-worker';
 import type {BriefRequest,BriefResponse} from './job-brief';
@@ -16,7 +16,7 @@ export type Result<T> = {ok:true; value:T}|{ok:false; error:string};
 export interface TaskStep {position:number;title:string;status:string;result:string;error:string;}
 export interface TaskRecord {project_id?:string;project_name?:string;context_json?:string;kind?:'text'|'master'|'file';steps?:TaskStep[];id:string;request_key:string;title?:string;status:string;created:string;updated:string;prompt?:string;result?:string;error?:string;}
 export interface Bridge {
- jobAssistant(request:AssistantRequest):Promise<Result<AssistantPage|AssistantPreview|AssistantTurn>>;
+ jobAssistant(request:AssistantRequest):Promise<Result<AssistantPage|AssistantPreview|AssistantTurn|AssistantSavePreview|JobDemoState>>;
  jobExport():Promise<Result<{saved:boolean;count:number}>>;
  jobImportPreview(raw:string,source:string):Promise<Result<ImportPreview>>;
  jobBriefWorker(operation:'start'|'stop'|'status'):Promise<Result<BriefWorkerStatus>>;

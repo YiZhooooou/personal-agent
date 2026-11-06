@@ -4,6 +4,7 @@ import fs from 'node:fs';import path from 'node:path';import {randomUUID} from '
 import {JobRecordsStore} from './job-records';import {JobProfileStore} from './job-profile';
 import {assistantInput,ASSISTANT_INSTRUCTIONS} from './job-assistant-context';import {MODEL} from './codex';
 import type {AssistantTurn,AssistantPreview,AssistantInput,AssistantPage,AssistantStatus} from './job-assistant-types';
+import type {AssistantSavePreview,AssistantSaveRequest} from './job-assistant-types';
 type Row=Record<string,unknown>;
 export class JobAssistantStore{
  private db:DatabaseSync;
@@ -13,6 +14,12 @@ export class JobAssistantStore{
  private turn(row:Row):AssistantTurn{const input=JSON.parse(String(row.input)) as AssistantInput;return {seq:Number(row.seq),id:String(row.id),jobId:String(row.job_id),jobLabel:input.context.job?String((input.context.job as {company:string;title:string}).company)+' · '+String((input.context.job as {company:string;title:string}).title):'全局求职行动',question:String(row.question),status:row.status as AssistantStatus,output:String(row.output),error:String(row.error),cancelRequested:!!row.cancel_requested,createdAt:String(row.created),updatedAt:String(row.updated),model:input.model,recordsRevision:input.recordsRevision,profileRevision:input.profileRevision};}
  private records(){const records=new JobRecordsStore(this.root);try{return records.request({operation:'get'});}finally{records.close();}}
  preview(id:string):AssistantPreview{const row=this.row(id),input=JSON.parse(String(row.input));return {turn:this.turn(row),input,characters:String(row.input).length};}
+ private adviceTurn(id:string){const turn=this.turn(this.row(id));if(turn.status!=='completed'||!turn.jobId||!turn.output.trim())throw new Error('只能保存已完成的岗位回复 / Only completed role replies can be saved');return turn;}
+ advicePreview(id:string):AssistantSavePreview{const turn=this.adviceTurn(id),state=this.records(),job=state.jobs.find(j=>j.id===turn.jobId);if(!job)throw new Error('原岗位不存在 / Original role not found');return {key:randomUUID(),turn,revision:state.revision||0,job:{id:job.id,company:job.company,title:job.title,notes:job.notes||'',next:job.next,stage:job.stage}};}
+ saveAdvice(request:AssistantSaveRequest,now=new Date()){
+  const turn=this.adviceTurn(request.id),records=new JobRecordsStore(this.root);
+  try{return records.request({operation:'save-assistant-advice',id:turn.jobId,key:request.key,revision:request.revision,kind:request.kind,text:request.text,dueDate:request.dueDate,source:{turnId:turn.id,model:turn.model,recordsRevision:turn.recordsRevision,profileRevision:turn.profileRevision,question:turn.question}},now);}finally{records.close();}
+ }
  prepare(question:unknown,jobId:unknown,now=new Date()):AssistantPreview{
   if(typeof jobId!=='string')throw new Error('Invalid job selection');
   const history=this.db.prepare("SELECT question,output,job_id,input FROM assistant_turns WHERE status='completed' AND (job_id=? OR job_id='') ORDER BY seq DESC LIMIT 8").all(jobId).reverse().map(r=>{const job=JSON.parse(String(r.input)).context.job;return {question:String(r.question),answer:String(r.output),jobId:String(r.job_id),jobLabel:job?job.company+' · '+job.title:'Global job search'};});
