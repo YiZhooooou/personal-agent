@@ -1,3 +1,21 @@
+## 2026-11-05 — Personal Master: reviewed inference and durable context / 个人 Master 推理入口
+
+Validation: 134 automated tests and build passed; 53 core/assistant checks passed under UTC+14. These include protocol fixtures and isolated processes, not live model success. Live connectivity remains blocked before inference. Native rendering, login and a completed synthetic model turn remain acceptance items.
+
+验证：134 项测试、构建与 UTC+14 下 53 项核心/助理检查通过。协议夹具和独立进程测试不等于真实模型成功；真实调用仍未通过，原生界面与正常桌面连接待验收。
+
+Implemented a Personal-only text assistant using the existing Codex app-server client and execution lifecycle. No new agent framework, paid service or API-key fallback. Preview freezes confirmed profile, selected role, up to 30 pending actions, local date/timezone and bounded recent role/global dialogue. Confirmation passes only the stored preview ID. Profile/record/model-policy/date changes require another preview. AI cannot update job facts, read mail, open sites or submit applications.
+
+新增个人文本助理入口，复用现有 Codex 登录与执行机制。每次先预览冻结资料，再确认发送；未确认档案字段不进入输入。长期事实以档案/岗位为准，聊天不自动改写事实。旧本地摘要保留独立入口。
+
+Turns and frozen inputs use job-assistant.sqlite3 with indexed, paged history, separate from the 5MB job aggregate. Tests cover 260 completed turns (520 displayed messages), source versions, duplicate confirmation, partial/cancelled output, parent exit, crash recovery and Work/Lab/frame boundaries. Current context is at most 8 relevant completed turns within 14k characters; complete history stays on disk but is not unlimited model memory. Total reviewed input is capped at 60k characters and output at 20k, with explicit failures/omission metadata.
+
+助理对话单独分页保存，不受旧本地摘要 500 条上限约束；这不等于模型会自动回忆全部历史。可停止、保留部分回复、关窗后查看，异常退出不会自动重发或重复消耗额度。主进程拦截 Work/Lab、非可信 frame、内部完成操作和发送中切换空间；已有回复时拒绝切换登录。
+
+Live check: exactly one fully synthetic attempt using the original isolated login directory, without copying credentials or reading its job records. Codex 0.166.0-alpha.5.1 initialized, but account/read failed with "workspace routing discovery failed"; a public auth-domain probe also failed DNS resolution. No turn/start inference request was reached. This is a blocked verification, not a successful model call and not proof the account is invalid. No permission/ACL/proxy bypass, automatic retry, paid API or credential inspection was attempted.
+
+实际验证尚未通过：运行程序可初始化，但账号发现阶段连接失败，本环境也无法解析登录域名。未到推理请求阶段；不能据此判断账号失效。需从正常桌面启动器验证连接与一条合成请求。Gmail、通知、完整分发包和自动事实提议仍未完成。
+
 ## 2026-11-04 — Background recovery verification / 后台恢复验证
 
 Final validation: 113 automated tests and production build passed; 39 core checks passed under UTC+14. Parent-exit, late diagnostic output, stale heartbeat after intentional test-worker termination and manual restart were exercised using isolated processes. A targeted start/duplicate-start/stop check passed eight consecutive repetitions after the Windows status-file fix. No native Electron acceptance is implied.

@@ -1,3 +1,9 @@
+## Personal-use priority — 2026-11-05 / 个人使用优先
+
+当前先做个人日常可用，不推进通用平台。已加入发送前审核的真实文本推理入口和独立分页对话存储；本环境真实调用在账号发现阶段被连接问题阻挡，尚未验收通过。下一步先从正常桌面验证登录与合成问答，再确认只读 Gmail 的个人接入方式。AI 自动改写事实、发信、投递、产品化安装与多用户继续暂缓。
+
+Personal use comes first. The reviewed inference path and paged assistant history are implemented, but live access is blocked during account discovery in this test environment. Next: normal-desktop connection and synthetic inference acceptance, then personal read-only Gmail integration. Automatic fact mutation, external actions, general platform and installer work remain deferred.
+
 ## Current checkpoint — 2026-11-04 / 当前进度
 
 求职主线：审核导入旧岗位、状态不明核对、可追溯的跟进改期/取消/恢复、岗位清单导出和紧凑首页。后台简报已支持显式启动与停止，电脑需运行；通知、Gmail、真实 Master 推理仍待接通。当前原型有岗位聚合 5MB 上限和会话数量限制，不能声称长期规模化完成。后台恢复已通过隔离进程验证；下一步集中原生验收，再接只读 Gmail 和受控真实推理。

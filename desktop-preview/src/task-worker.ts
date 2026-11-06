@@ -21,10 +21,10 @@ export async function acquireWorker(root:string):Promise<()=>void>{
 }
 
 type ExecutionResult={status:'succeeded'|'failed'|'interrupted'|'cancelled';result:string;error:string;stopWorker?:boolean};
-type ExecutionHooks={isCancelled:()=>boolean;onProgress:(text:string)=>void;pollMs?:number;limitMs?:number;cancelGraceMs?:number};
+type ExecutionHooks={instructions?:string;isCancelled:()=>boolean;onProgress:(text:string)=>void;pollMs?:number;limitMs?:number;cancelGraceMs?:number};
 export async function execute(c:Pick<Codex,'request'|'close'> & Pick<EventEmitter,'on'|'off'>,root:string,prompt:string,hooks:ExecutionHooks):Promise<ExecutionResult>{
  if(hooks.isCancelled())return {status:'cancelled',result:'',error:''};
- const started=await c.request('thread/start',{model:MODEL,modelProvider:'openai',cwd:path.join(root,'empty-workspace'),ephemeral:true,approvalPolicy:'on-request',sandbox:'read-only',baseInstructions:'Complete the supplied text task. No tools or external actions are available. Do not claim to have performed actions.',config:{project_doc_max_bytes:0,web_search:'disabled'}});
+ const started=await c.request('thread/start',{model:MODEL,modelProvider:'openai',cwd:path.join(root,'empty-workspace'),ephemeral:true,approvalPolicy:'on-request',sandbox:'read-only',baseInstructions:hooks.instructions||'Complete the supplied text task. No tools or external actions are available. Do not claim to have performed actions.',config:{project_doc_max_bytes:0,web_search:'disabled'}});
  if(hooks.isCancelled())return {status:'cancelled',result:'',error:''};
  return new Promise(resolve=>{
   let result='',turnId='',cancelSent=false,settled=false,lastSaved='',lastSave=0;

@@ -56,6 +56,14 @@ function register(){
  const tasks=new TaskService(root,app.isPackaged?path.join(process.resourcesPath,'task-service','tasks.cjs'):path.join(__dirname,'tasks.cjs'),app.isPackaged);
  handle('jobBriefWorker',async(operation:unknown)=>{requirePersonal(store.state.space);if(typeof operation!=='string'||!['start','stop','status'].includes(operation))throw new Error('Invalid brief worker operation');if(operation==='start')await tasks.run('','','brief-watch');return tasks.call(operation==='stop'?'brief-stop':'brief-status');});
  handle('jobBrief',(request:unknown)=>{requirePersonal(store.state.space);if(!request||typeof request!=='object'||JSON.stringify(request).length>1000)throw new Error('Invalid brief request');return tasks.call('brief',[],JSON.stringify(request));});
+ const ensureAssistantIdle=async()=>{const status=await tasks.call('assistant',[],JSON.stringify({operation:'active'}));if(status.active)throw new Error('请先停止 Master 回复，再更改登录 / Stop the active Master reply before changing sign-in');};
+ handle('jobAssistant',async(request:unknown)=>{
+  requirePersonal(store.state.space);if(!request||typeof request!=='object'||JSON.stringify(request).length>6000)throw new Error('Invalid assistant request');const r=request as {operation:string;id?:string};
+  if(!['prepare','preview','list','start','cancel'].includes(r.operation))throw new Error('Unsupported assistant operation');
+  if(r.operation==='start'){const queued=await tasks.call('assistant',[],JSON.stringify({operation:'queue',id:r.id}));if(!queued.launch)return queued.turn;if(store.state.space!=='personal'){await tasks.call('assistant',[],JSON.stringify({operation:'cancel',id:r.id}));requirePersonal(store.state.space);}
+   try{await tasks.run(store.state.codexPath,r.id,'assistant-run');}catch(error){await tasks.call('assistant',[],JSON.stringify({operation:'launch-failed',id:r.id,error:errorText(error)}));throw error;}return tasks.call('assistant',[],JSON.stringify({operation:'preview',id:r.id}));}
+  return tasks.call('assistant',[],JSON.stringify(request));
+ });
  handle('jobExport',async()=>{
   requirePersonal(store.state.space);const result=await dialog.showSaveDialog(win,{title:'导出岗位清单 / Export job list',defaultPath:'job-list.json',filters:[{name:'Job list JSON',extensions:['json']}]});if(result.canceled||!result.filePath)return {saved:false,count:0};requirePersonal(store.state.space);
   const state=await tasks.call('records',[],JSON.stringify({operation:'get'}));requirePersonal(store.state.space);const content=exportJobList(state),tmp=result.filePath+'.'+randomUUID()+'.tmp';try{fs.writeFileSync(tmp,content,{encoding:'utf8',flag:'wx'});fs.renameSync(tmp,result.filePath);}finally{fs.rmSync(tmp,{force:true});}return {saved:true,count:state.jobs.length};
@@ -86,14 +94,14 @@ function register(){
  handle('connect',connect);
  handle('chooseCodex',async()=>{idle();const result=await dialog.showOpenDialog(win,{properties:['openFile'],filters:[{name:'Codex executable',extensions:['exe']}]});if(!result.canceled){store.state.codexPath=result.filePaths[0];store.save();}return snapshot();});
  handle('login',async()=>{
-  idle();runtime.error='';changed();if(!runtime.connected)await connect();
+  idle();await ensureAssistantIdle();runtime.error='';changed();if(!runtime.connected){runtime.version=await codex.start(store.state.codexPath);runtime.connected=true;}
   const previousLogin=pendingLogin;pendingLogin=null;
   if(previousLogin)await codex.request('account/login/cancel',{loginId:previousLogin}).catch(()=>{});
   const r=await codex.request('account/login/start',{type:'chatgpt'});
   const url=new URL(r.authUrl);if(url.protocol!=='https:'||!['auth.openai.com','chatgpt.com','auth.chatgpt.com'].includes(url.hostname))throw new Error('Unexpected sign-in address');
   pendingLogin=r.loginId;await shell.openExternal(url.href);return true;
  });
- handle('logout',async()=>{idle();if(runtime.connected)await codex.request('account/logout');runtime.account='none';runtime.plan='';runtime.quota='unknown';pendingLogin=null;changed();return snapshot();});
+ handle('logout',async()=>{idle();await ensureAssistantIdle();if(runtime.connected)await codex.request('account/logout');runtime.account='none';runtime.plan='';runtime.quota='unknown';pendingLogin=null;changed();return snapshot();});
  handle('refresh',refresh);
  handle('send',async(id:string,text:string)=>{
   idle();const chat=store.chat(id);

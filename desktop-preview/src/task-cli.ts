@@ -1,3 +1,5 @@
+import {JobAssistantStore} from './job-assistant-store';
+import {runAssistant,recoverAssistant} from './job-assistant-worker';
 import {watchBriefs,readBriefWorkerStatus,stopBriefWorker} from './job-brief-worker';
 import {JobRecordsStore} from './job-records';
 import path from 'node:path';
@@ -10,7 +12,9 @@ import {runTasks,acquireWorker} from './task-worker';
 
 async function main(){
  const [command,root,arg,key,projectId]=process.argv.slice(2);
- if(!root||!path.isAbsolute(root)||!['import-preview','brief-watch','brief-status','brief-stop','brief','records','watch','project','submit','submit-master','list','show','run','cancel'].includes(command))throw new Error('Usage: tasks <submit|submit-master|list|show|run|cancel> <absolute data directory> [prompt or task ID] [request key]');
+ if(!root||!path.isAbsolute(root)||!['assistant','assistant-run','import-preview','brief-watch','brief-status','brief-stop','brief','records','watch','project','submit','submit-master','list','show','run','cancel'].includes(command))throw new Error('Usage: tasks <submit|submit-master|list|show|run|cancel> <absolute data directory> [prompt or task ID] [request key]');
+ if(command==='assistant-run'){await runAssistant(root,key||'',arg||'',()=>process.send?.({ready:true}));return;}
+ if(command==='assistant'){const assistant=new JobAssistantStore(root);try{await recoverAssistant(root,assistant);const r=JSON.parse(fs.readFileSync(0,'utf8'));const value=r.operation==='active'?{active:assistant.active()}:r.operation==='list'?assistant.list(r.before):r.operation==='prepare'?assistant.prepare(r.question,r.jobId):r.operation==='preview'?assistant.preview(r.id):r.operation==='queue'?assistant.queue(r.id):r.operation==='cancel'?assistant.cancel(r.id):r.operation==='launch-failed'?assistant.launchFailed(r.id,String(r.error||'Worker could not start')):null;if(value===null)throw new Error('Invalid assistant operation');console.log(JSON.stringify(value));}finally{assistant.close();}return;}
  if(command==='import-preview'){const store=new JobRecordsStore(root);try{const r=JSON.parse(fs.readFileSync(0,'utf8'));console.log(JSON.stringify(store.previewImport(r.raw,r.source)));}finally{store.close();}return;}
  if(command==='brief-watch'){await watchBriefs(root,()=>process.send?.({ready:true}));return;}
  if(command==='brief-status'||command==='brief-stop'){if(command==='brief-stop')stopBriefWorker(root);console.log(JSON.stringify(await readBriefWorkerStatus(root)));return;}

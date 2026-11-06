@@ -49,3 +49,7 @@
 .job-todo-record{padding:12px 0;border-bottom:1px solid var(--line)}.job-todo-record .record-todo{margin:0 0 9px}.job-todo-record details{font-size:11px;margin-top:9px;color:var(--muted)}.todo-adjustment{margin:12px 0;padding:10px;background:var(--bg);border-radius:8px}.todo-adjustment textarea{width:100%;min-height:65px;padding:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink)}
 
 .import-row-body{min-width:0;display:grid;gap:5px}.import-row-body label{cursor:pointer}.import-row-body details{font-size:11px;line-height:1.7}.import-row-body dt{font-weight:600;margin-top:8px}.import-row-body dd{margin:3px 0;white-space:pre-wrap;overflow-wrap:anywhere}
+
+.assistant-turn-tools{display:flex;gap:8px;flex-wrap:wrap}.assistant-turn-tools button{font-size:10px;padding:5px 8px}.assistant-input-review{width:760px;max-height:90vh;overflow:auto}.assistant-input-review .review-text{max-height:45vh}.job-master>.job-caption{margin:10px 0}.assistant-turn .job-message [role=alert]{color:#a0472a}
+
+.assistant-mode{display:flex;gap:6px;margin-bottom:10px}.assistant-mode button{font-size:11px;padding:5px 9px}.assistant-mode button[aria-pressed=true]{background:var(--accent-bg);color:var(--accent)}
